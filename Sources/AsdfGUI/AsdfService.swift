@@ -51,32 +51,30 @@ struct AsdfService {
 
     func version(executable: URL) async throws -> String {
         let result = try await runner.run(executable: executable, arguments: ["version"])
-        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
-        return result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try checkedText(result)
     }
 
     func plugins(executable: URL) async throws -> [AsdfPlugin] {
         let result = try await runner.run(executable: executable, arguments: ["plugin", "list", "--urls"])
-        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
+        guard result.exitCode == 0 else { throw commandError(result) }
         return Self.parsePlugins(result.stdout)
     }
 
     func installedVersions(executable: URL, tool: String) async throws -> [String] {
         let result = try await runner.run(executable: executable, arguments: ["list", tool])
-        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
+        guard result.exitCode == 0 else { throw commandError(result) }
         return Self.parseInstalledVersions(result.stdout)
     }
 
     func availableVersions(executable: URL, tool: String) async throws -> [String] {
         let result = try await runner.run(executable: executable, arguments: ["list", "all", tool])
-        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
+        guard result.exitCode == 0 else { throw commandError(result) }
         return Self.parseVersionLines(result.stdout)
     }
 
     func latestVersion(executable: URL, tool: String) async throws -> String {
         let result = try await runner.run(executable: executable, arguments: ["latest", tool])
-        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
-        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = try checkedText(result)
         guard !value.isEmpty else { throw AsdfError.commandFailed("asdf latest returned no version for \(tool).") }
         return value
     }
@@ -109,12 +107,7 @@ struct AsdfService {
             arguments: arguments,
             currentDirectory: currentDirectory
         )
-
-        guard result.exitCode == 0 else {
-            let message = result.stderr.isEmpty ? result.stdout : result.stderr
-            throw AsdfError.commandFailed(message)
-        }
-        return result
+        return try checkedResult(result)
     }
 
     func installVersion(
@@ -130,12 +123,7 @@ struct AsdfService {
             currentDirectory: currentDirectory,
             onOutput: onOutput
         )
-
-        guard result.exitCode == 0 else {
-            let message = result.stderr.isEmpty ? result.stdout : result.stderr
-            throw AsdfError.commandFailed(message)
-        }
-        return result
+        return try checkedResult(result)
     }
 
     func uninstallVersion(
@@ -149,12 +137,84 @@ struct AsdfService {
             arguments: ["uninstall", tool, version],
             onOutput: onOutput
         )
+        return try checkedResult(result)
+    }
 
-        guard result.exitCode == 0 else {
-            let message = result.stderr.isEmpty ? result.stdout : result.stderr
-            throw AsdfError.commandFailed(message)
+    func addPlugin(
+        executable: URL,
+        name: String,
+        gitURL: String? = nil,
+        onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
+    ) async throws -> AsdfCommandResult {
+        var arguments = ["plugin", "add", name]
+        if let gitURL = normalizedOptional(gitURL) {
+            arguments.append(gitURL)
         }
-        return result
+        let result = try await runner.run(executable: executable, arguments: arguments, onOutput: onOutput)
+        return try checkedResult(result)
+    }
+
+    func updatePlugin(
+        executable: URL,
+        name: String,
+        gitRef: String? = nil,
+        onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
+    ) async throws -> AsdfCommandResult {
+        var arguments = ["plugin", "update", name]
+        if let gitRef = normalizedOptional(gitRef) {
+            arguments.append(gitRef)
+        }
+        let result = try await runner.run(executable: executable, arguments: arguments, onOutput: onOutput)
+        return try checkedResult(result)
+    }
+
+    func updateAllPlugins(
+        executable: URL,
+        onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
+    ) async throws -> AsdfCommandResult {
+        let result = try await runner.run(
+            executable: executable,
+            arguments: ["plugin", "update", "--all"],
+            onOutput: onOutput
+        )
+        return try checkedResult(result)
+    }
+
+    func removePlugin(
+        executable: URL,
+        name: String,
+        onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
+    ) async throws -> AsdfCommandResult {
+        let result = try await runner.run(
+            executable: executable,
+            arguments: ["plugin", "remove", name],
+            onOutput: onOutput
+        )
+        return try checkedResult(result)
+    }
+
+    func info(executable: URL) async throws -> String {
+        let result = try await runner.run(executable: executable, arguments: ["info"])
+        return try checkedText(result)
+    }
+
+    func wherePath(executable: URL, tool: String, version: String? = nil) async throws -> String {
+        var arguments = ["where", tool]
+        if let version = normalizedOptional(version) {
+            arguments.append(version)
+        }
+        let result = try await runner.run(executable: executable, arguments: arguments)
+        return try checkedText(result)
+    }
+
+    func whichPath(executable: URL, command: String) async throws -> String {
+        let result = try await runner.run(executable: executable, arguments: ["which", command])
+        return try checkedText(result)
+    }
+
+    func reshim(executable: URL, tool: String, version: String) async throws -> AsdfCommandResult {
+        let result = try await runner.run(executable: executable, arguments: ["reshim", tool, version])
+        return try checkedResult(result)
     }
 
     static func parsePlugins(_ output: String) -> [AsdfPlugin] {
@@ -177,5 +237,26 @@ struct AsdfService {
             .split(whereSeparator: { $0.isNewline })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    private func checkedResult(_ result: AsdfCommandResult) throws -> AsdfCommandResult {
+        guard result.exitCode == 0 else { throw commandError(result) }
+        return result
+    }
+
+    private func checkedText(_ result: AsdfCommandResult) throws -> String {
+        let checked = try checkedResult(result)
+        return checked.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func commandError(_ result: AsdfCommandResult) -> AsdfError {
+        let message = result.stderr.isEmpty ? result.stdout : result.stderr
+        return .commandFailed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private func normalizedOptional(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
