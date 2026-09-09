@@ -95,10 +95,13 @@ final class DiagnosticsModel {
     }
 
     func runReshim(tool: String, version: String, appModel: AppModel) async {
-        guard !appModel.hasActiveOperation else {
+        guard !isRunning else { return }
+        guard appModel.beginExternalWriteOperation() else {
             errorMessage = "Another asdf write operation is currently running."
             return
         }
+        defer { appModel.endExternalWriteOperation() }
+
         await run(title: "asdf reshim \(tool) \(version)", appModel: appModel) { service, executable in
             let result = try await service.reshim(executable: executable, tool: tool, version: version)
             let combined = [result.stdout, result.stderr]
