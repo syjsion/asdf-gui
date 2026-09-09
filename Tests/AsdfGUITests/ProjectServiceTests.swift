@@ -80,6 +80,41 @@ final class ProjectServiceTests: XCTestCase {
         )
     }
 
+    func testProjectInstallPlannerUsesFirstMissingFallbackOnlyWhenUnsatisfied() {
+        let requirements = [
+            ToolRequirement(tool: "nodejs", versions: ["22.18.0", "20.19.4"]),
+            ToolRequirement(tool: "python", versions: ["3.13.2", "3.12.9"]),
+            ToolRequirement(tool: "ruby", versions: ["3.4.1"]),
+            ToolRequirement(tool: "elixir", versions: ["1.18.4"])
+        ]
+
+        let statuses: [String: RequirementVersionStatus] = [
+            "nodejs@22.18.0": .missing,
+            "nodejs@20.19.4": .missing,
+            "python@3.13.2": .missing,
+            "python@3.12.9": .installed,
+            "ruby@3.4.1": .pluginMissing,
+            "elixir@1.18.4": .unknown
+        ]
+
+        let plan = ProjectInstallPlanner.plan(requirements: requirements) { tool, version in
+            statuses["\(tool)@\(version)"] ?? .unknown
+        }
+
+        XCTAssertEqual(plan, [ProjectInstallItem(tool: "nodejs", version: "22.18.0")])
+    }
+
+    func testProjectInstallPlannerPlansEachToolAtMostOnce() {
+        let requirements = [
+            ToolRequirement(tool: "nodejs", versions: ["22.18.0"]),
+            ToolRequirement(tool: "nodejs", versions: ["20.19.4"])
+        ]
+
+        let plan = ProjectInstallPlanner.plan(requirements: requirements) { _, _ in .missing }
+
+        XCTAssertEqual(plan, [ProjectInstallItem(tool: "nodejs", version: "22.18.0")])
+    }
+
     func testSnapshotReadsToolVersionsFile() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
