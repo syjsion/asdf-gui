@@ -18,6 +18,40 @@ struct ToolRequirement: Identifiable, Hashable {
     var id: String { tool }
 }
 
+enum RequirementVersionStatus: Hashable {
+    case installed
+    case missing
+    case system
+    case path
+    case pluginMissing
+    case unknown
+
+    var isSatisfied: Bool {
+        switch self {
+        case .installed, .system, .path:
+            return true
+        case .missing, .pluginMissing, .unknown:
+            return false
+        }
+    }
+}
+
+enum RequirementStatusResolver {
+    static func resolve(
+        version: String,
+        installedVersions: Set<String>?,
+        pluginInstalled: Bool,
+        lookupFailed: Bool
+    ) -> RequirementVersionStatus {
+        guard pluginInstalled else { return .pluginMissing }
+        if version == "system" { return .system }
+        if version.hasPrefix("path:") { return .path }
+        if lookupFailed { return .unknown }
+        guard let installedVersions else { return .unknown }
+        return installedVersions.contains(version) ? .installed : .missing
+    }
+}
+
 struct ProjectSnapshot: Identifiable, Hashable {
     let project: ManagedProject
     let hasToolVersionsFile: Bool
