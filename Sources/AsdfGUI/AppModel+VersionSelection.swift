@@ -16,6 +16,13 @@ enum VersionSelectionError: LocalizedError {
 
 @MainActor
 extension AppModel {
+    func loadInstalledVersionsForSelection(tool: String) async throws -> [String] {
+        guard let executableURL else { throw VersionSelectionError.executableUnavailable }
+        let installed = try await AsdfService().installedVersions(executable: executableURL, tool: tool)
+        installedVersionsByTool[tool] = installed
+        return installed
+    }
+
     func setProjectVersion(tool: String, version: String, project: ManagedProject) async throws {
         guard !hasActiveOperation else { throw VersionSelectionError.operationInProgress }
         guard let executableURL else { throw VersionSelectionError.executableUnavailable }
