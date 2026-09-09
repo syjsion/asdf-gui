@@ -80,13 +80,32 @@ struct AsdfService {
         executable: URL,
         tool: String,
         version: String,
-        currentDirectory: URL,
+        currentDirectory: URL? = nil,
         onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
     ) async throws -> AsdfCommandResult {
         let result = try await runner.run(
             executable: executable,
             arguments: ["install", tool, version],
             currentDirectory: currentDirectory,
+            onOutput: onOutput
+        )
+
+        guard result.exitCode == 0 else {
+            let message = result.stderr.isEmpty ? result.stdout : result.stderr
+            throw AsdfError.commandFailed(message)
+        }
+        return result
+    }
+
+    func uninstallVersion(
+        executable: URL,
+        tool: String,
+        version: String,
+        onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
+    ) async throws -> AsdfCommandResult {
+        let result = try await runner.run(
+            executable: executable,
+            arguments: ["uninstall", tool, version],
             onOutput: onOutput
         )
 

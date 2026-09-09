@@ -92,6 +92,7 @@ struct ProjectsView: View {
                     ProgressView().controlSize(.small)
                 }
                 Button("Add Project", systemImage: "plus") { isAddingProject = true }
+                    .disabled(model.hasActiveOperation)
             }
 
             if let importerError {
@@ -122,7 +123,7 @@ struct ProjectsView: View {
             Button("Refresh Projects", systemImage: "arrow.clockwise") {
                 Task { await model.reloadProjects() }
             }
-            .disabled(model.activeInstallTask?.isRunning == true)
+            .disabled(model.hasActiveOperation)
         }
         .fileImporter(
             isPresented: $isAddingProject,
@@ -224,7 +225,7 @@ struct ProjectRow: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .disabled(model.activeInstallTask?.isRunning == true)
+                .disabled(model.hasActiveOperation)
                 .help("Remove from asdf GUI. Files are not deleted.")
             }
 
@@ -250,7 +251,7 @@ struct ProjectRow: View {
                             Button("Install Missing (\(installPlan.count))", systemImage: "arrow.down.circle") {
                                 model.installMissing(for: snapshot)
                             }
-                            .disabled(model.activeInstallTask?.isRunning == true || model.executableURL == nil)
+                            .disabled(model.hasActiveOperation || model.executableURL == nil)
                             .help("Install the first missing version for each unsatisfied tool requirement.")
                         }
                     }
@@ -312,7 +313,7 @@ struct VersionsView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text("Versions").font(.largeTitle.bold())
-                    Text("Browse installed, latest, and available versions for each installed plugin.")
+                    Text("Browse, install, and uninstall versions for each installed plugin.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -323,7 +324,18 @@ struct VersionsView: View {
                     guard let selectedTool else { return }
                     Task { await model.loadVersionBrowser(tool: selectedTool) }
                 }
-                .disabled(selectedTool == nil || model.isLoadingVersionBrowser)
+                .disabled(selectedTool == nil || model.isLoadingVersionBrowser || model.hasActiveOperation)
+            }
+
+            if let task = model.activeVersionOperation {
+                VersionOperationPanel(task: task)
+            } else if model.activeInstallTask?.isRunning == true {
+                Label(
+                    "A project install task is running. Version actions are temporarily disabled.",
+                    systemImage: "hourglass"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
 
             if model.plugins.isEmpty && !model.isLoading {
@@ -346,6 +358,7 @@ struct VersionsView: View {
                         .tag(plugin.name)
                     }
                     .frame(minWidth: 170, idealWidth: 210, maxWidth: 250)
+                    .disabled(model.hasActiveOperation)
 
                     VersionBrowserDetail(searchText: searchText, scope: scope)
                         .frame(minWidth: 440)
@@ -386,6 +399,55 @@ struct VersionsView: View {
     }
 }
 
+struct VersionOperationPanel: View {
+    @Environment(AppModel.self) private var model
+    let task: VersionOperationTaskState
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label(task.panelTitle, systemImage: task.status.symbolName)
+                        .font(.headline)
+                    Spacer()
+                    if task.isRunning {
+                        Button("Cancel", role: .destructive) {
+                            model.cancelVersionOperation()
+                        }
+                    } else {
+                        Button("Close") {
+                            model.dismissVersionOperation()
+                        }
+                    }
+                }
+
+                Text("\(task.tool) \(task.version)")
+                    .font(.callout.monospaced())
+                    .textSelection(.enabled)
+
+                if let error = task.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                }
+
+                ScrollView {
+                    Text(task.log)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .frame(minHeight: 90, maxHeight: 170)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
+            }
+        } label: {
+            Text("Version Task")
+        }
+    }
+}
+
 private enum VersionBrowserScope: String, CaseIterable, Identifiable {
     case all
     case installed
@@ -394,9 +456,16 @@ private enum VersionBrowserScope: String, CaseIterable, Identifiable {
     var title: String { self == .all ? "All" : "Installed" }
 }
 
+private struct PendingVersionUninstall {
+    let tool: String
+    let version: String
+}
+
 @MainActor
 private struct VersionBrowserDetail: View {
     @Environment(AppModel.self) private var model
+    @State private var pendingUninstall: PendingVersionUninstall?
+    @State private var isShowingUninstallConfirmation = false
     let searchText: String
     let scope: VersionBrowserScope
 
@@ -474,6 +543,26 @@ private struct VersionBrowserDetail: View {
                             }
                             .font(.callout)
                         }
+                        TableColumn("Action") { record in
+                            if record.isInstalled {
+                                Button(role: .destructive) {
+                                    pendingUninstall = PendingVersionUninstall(tool: tool, version: record.version)
+                                    isShowingUninstallConfirmation = true
+                                } label: {
+                                    Label("Uninstall", systemImage: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(model.hasActiveOperation)
+                            } else {
+                                Button {
+                                    model.installVersionFromBrowser(tool: tool, version: record.version)
+                                } label: {
+                                    Label("Install", systemImage: "arrow.down.circle")
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(model.hasActiveOperation || model.executableURL == nil)
+                            }
+                        }
                     }
                 }
             } else {
@@ -485,6 +574,33 @@ private struct VersionBrowserDetail: View {
             }
         }
         .padding(.leading, 12)
+        .alert(
+            "Uninstall version?",
+            isPresented: $isShowingUninstallConfirmation,
+            presenting: pendingUninstall
+        ) { request in
+            Button("Uninstall", role: .destructive) {
+                model.uninstallVersionFromBrowser(tool: request.tool, version: request.version)
+                pendingUninstall = nil
+            }
+            Button("Cancel", role: .cancel) {
+                pendingUninstall = nil
+            }
+        } message: { request in
+            Text(uninstallMessage(for: request))
+        }
+    }
+
+    private func uninstallMessage(for request: PendingVersionUninstall) -> String {
+        let projects = model.projectsUsing(tool: request.tool, version: request.version)
+        guard !projects.isEmpty else {
+            return "This removes \(request.tool) \(request.version) from asdf. Reinstalling will be required to use it again."
+        }
+
+        let projectList = projects
+            .map { "• \($0.name) — \($0.path)" }
+            .joined(separator: "\n")
+        return "This version is referenced by \(projects.count) managed project\(projects.count == 1 ? "" : "s"):\n\n\(projectList)\n\nUninstalling may leave those projects with a missing runtime unless another configured fallback remains usable."
     }
 }
 
@@ -501,6 +617,32 @@ private extension ProjectInstallTaskStatus {
     var symbolName: String {
         switch self {
         case .running: "arrow.down.circle"
+        case .succeeded: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .cancelled: "stop.circle"
+        }
+    }
+}
+
+private extension VersionOperationTaskState {
+    var panelTitle: String {
+        switch status {
+        case .running:
+            return kind == .install ? "Installing version" : "Uninstalling version"
+        case .succeeded:
+            return kind == .install ? "Installation complete" : "Uninstall complete"
+        case .failed:
+            return kind == .install ? "Installation failed" : "Uninstall failed"
+        case .cancelled:
+            return "Version operation cancelled"
+        }
+    }
+}
+
+private extension VersionOperationStatus {
+    var symbolName: String {
+        switch self {
+        case .running: "arrow.triangle.2.circlepath"
         case .succeeded: "checkmark.circle.fill"
         case .failed: "xmark.circle.fill"
         case .cancelled: "stop.circle"
