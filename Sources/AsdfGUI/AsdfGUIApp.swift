@@ -11,6 +11,16 @@ struct AsdfGUIApp: App {
                 .environment(model)
                 .frame(minWidth: 900, minHeight: 580)
         }
+        .commands {
+            AsdfCommands()
+        }
+
+        Window("Set Runtime Version", id: "version-selection") {
+            VersionSelectionView()
+                .environment(model)
+        }
+        .defaultSize(width: 620, height: 500)
+
         Settings {
             SettingsView()
                 .environment(model)
