@@ -17,33 +17,6 @@ enum AsdfError: LocalizedError {
     }
 }
 
-struct AsdfCommandRunner {
-    func run(executable: URL, arguments: [String], currentDirectory: URL? = nil) async throws -> AsdfCommandResult {
-        try await withCheckedThrowingContinuation { continuation in
-            let process = Process()
-            let stdoutPipe = Pipe()
-            let stderrPipe = Pipe()
-            process.executableURL = executable
-            process.arguments = arguments
-            process.currentDirectoryURL = currentDirectory
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-
-            process.terminationHandler = { process in
-                let stdout = String(data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                let stderr = String(data: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                continuation.resume(returning: AsdfCommandResult(stdout: stdout, stderr: stderr, exitCode: process.terminationStatus))
-            }
-
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(throwing: error)
-            }
-        }
-    }
-}
-
 struct AsdfService {
     private let runner = AsdfCommandRunner()
 
