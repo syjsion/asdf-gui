@@ -22,7 +22,10 @@ final class AppModel {
     var plugins: [AsdfPlugin] = []
     var projects: [ManagedProject] = []
     var projectSnapshots: [ProjectSnapshot] = []
+    var installedVersionsByTool: [String: [String]] = [:]
+    var versionLookupErrors: [String: String] = [:]
     var isLoading = false
+    var isRefreshingVersionStatus = false
     var errorMessage: String?
 
     private let service = AsdfService()
@@ -47,10 +50,13 @@ final class AppModel {
             async let loadedPlugins = service.plugins(executable: executable)
             asdfVersion = try await version
             plugins = try await loadedPlugins
+            await refreshInstalledVersions()
         } catch {
             executableURL = nil
             asdfVersion = "Not detected"
             plugins = []
+            installedVersionsByTool = [:]
+            versionLookupErrors = [:]
             errorMessage = error.localizedDescription
         }
     }
@@ -86,15 +92,65 @@ final class AppModel {
         projects = updated.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         preferences.setProjects(projects)
         refreshProjects()
+        Task { await refreshInstalledVersions() }
     }
 
     func removeProject(_ project: ManagedProject) {
         projects.removeAll { $0.id == project.id }
         preferences.setProjects(projects)
         refreshProjects()
+        Task { await refreshInstalledVersions() }
     }
 
     func refreshProjects() {
         projectSnapshots = projects.map { projectService.snapshot(for: $0) }
+    }
+
+    func reloadProjects() async {
+        refreshProjects()
+        await refreshInstalledVersions()
+    }
+
+    func refreshInstalledVersions() async {
+        guard let executable = executableURL else {
+            installedVersionsByTool = [:]
+            versionLookupErrors = [:]
+            return
+        }
+
+        let tools = Set(projectSnapshots.flatMap(\.requirements).map(\.tool))
+        let installedPlugins = Set(plugins.map(\.name))
+        var versionsByTool: [String: [String]] = [:]
+        var lookupErrors: [String: String] = [:]
+
+        isRefreshingVersionStatus = true
+        defer { isRefreshingVersionStatus = false }
+
+        for tool in tools.sorted() where installedPlugins.contains(tool) {
+            do {
+                versionsByTool[tool] = try await service.installedVersions(executable: executable, tool: tool)
+            } catch {
+                lookupErrors[tool] = error.localizedDescription
+            }
+        }
+
+        installedVersionsByTool = versionsByTool
+        versionLookupErrors = lookupErrors
+    }
+
+    func status(for tool: String, version: String) -> RequirementVersionStatus {
+        let installed: Set<String>? = installedVersionsByTool[tool].map { Set($0) }
+        return RequirementStatusResolver.resolve(
+            version: version,
+            installedVersions: installed,
+            pluginInstalled: plugins.contains { $0.name == tool },
+            lookupFailed: versionLookupErrors[tool] != nil
+        )
+    }
+
+    func isRequirementSatisfied(_ requirement: ToolRequirement) -> Bool {
+        requirement.versions.contains { version in
+            status(for: requirement.tool, version: version).isSatisfied
+        }
     }
 }
