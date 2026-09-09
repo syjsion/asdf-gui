@@ -74,12 +74,13 @@ final class AppModel {
 
     func addProjects(_ urls: [URL]) {
         var updated = projects
-        let existingPaths = Set(updated.map(\.path))
+        var existingPaths = Set(updated.map(\.path))
 
         for url in urls {
             let standardized = url.standardizedFileURL
-            guard !existingPaths.contains(standardized.path) else { continue }
-            updated.append(ManagedProject(path: standardized.path))
+            if existingPaths.insert(standardized.path).inserted {
+                updated.append(ManagedProject(path: standardized.path))
+            }
         }
 
         projects = updated.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
