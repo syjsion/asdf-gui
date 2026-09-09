@@ -1,6 +1,8 @@
 import Foundation
 import Observation
 
+typealias PluginOutputHandler = @Sendable (AsdfOutputEvent) -> Void
+
 enum PluginOperationKind: Hashable {
     case add
     case update
@@ -153,14 +155,15 @@ final class PluginManagementModel {
         kind: PluginOperationKind,
         pluginName: String?,
         appModel: AppModel,
-        operation: @escaping @Sendable (AsdfService, URL, @escaping @Sendable (AsdfOutputEvent) -> Void) async throws -> AsdfCommandResult
+        operation: @escaping @Sendable (AsdfService, URL, PluginOutputHandler) async throws -> AsdfCommandResult
     ) {
-        guard !isBusy, !appModel.hasActiveOperation else {
-            errorMessage = "Another asdf operation is currently running."
-            return
-        }
+        guard !isBusy else { return }
         guard let executable = appModel.executableURL else {
             errorMessage = "asdf executable is not available."
+            return
+        }
+        guard appModel.beginExternalWriteOperation() else {
+            errorMessage = "Another asdf write operation is currently running."
             return
         }
 
@@ -176,25 +179,30 @@ final class PluginManagementModel {
             errorMessage: nil
         )
 
-        operationTask = Task { [weak self, weak appModel] in
-            guard let self, let appModel else { return }
+        operationTask = Task { [weak self] in
+            guard let self else {
+                appModel.endExternalWriteOperation()
+                return
+            }
+            defer { appModel.endExternalWriteOperation() }
+
             do {
                 _ = try await operation(service, executable) { [weak self] event in
                     Task { [weak self] in
                         await self?.append(event.text, id: id)
                     }
                 }
-                await self.finish(id: id, status: .succeeded, error: nil)
+                self.finish(id: id, status: .succeeded, error: nil)
                 await appModel.refresh()
                 if let pluginName, appModel.versionBrowserTool == pluginName,
                    !appModel.plugins.contains(where: { $0.name == pluginName }) {
                     appModel.resetVersionBrowser()
                 }
             } catch is CancellationError {
-                await self.finish(id: id, status: .cancelled, error: nil)
+                self.finish(id: id, status: .cancelled, error: nil)
             } catch {
-                await self.append("\n✗ \(error.localizedDescription)\n", id: id)
-                await self.finish(id: id, status: .failed, error: error.localizedDescription)
+                self.append("\n✗ \(error.localizedDescription)\n", id: id)
+                self.finish(id: id, status: .failed, error: error.localizedDescription)
             }
         }
     }
