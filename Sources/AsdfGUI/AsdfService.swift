@@ -2,12 +2,15 @@ import Foundation
 
 enum AsdfError: LocalizedError {
     case executableNotFound
+    case invalidExecutable(String)
     case commandFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .executableNotFound:
             return "Could not find the asdf executable. Configure its path in Settings."
+        case .invalidExecutable(let path):
+            return "The selected asdf executable is not executable: \(path)"
         case .commandFailed(let message):
             return message.isEmpty ? "asdf command failed." : message
         }
@@ -44,8 +47,17 @@ struct AsdfCommandRunner {
 struct AsdfService {
     private let runner = AsdfCommandRunner()
 
-    func locateExecutable() throws -> URL {
+    func locateExecutable(preferred: URL? = nil) throws -> URL {
         let fm = FileManager.default
+
+        if let preferred {
+            let standardized = preferred.standardizedFileURL
+            guard fm.isExecutableFile(atPath: standardized.path) else {
+                throw AsdfError.invalidExecutable(standardized.path)
+            }
+            return standardized
+        }
+
         let home = fm.homeDirectoryForCurrentUser
         let candidates = [
             URL(fileURLWithPath: "/opt/homebrew/bin/asdf"),
