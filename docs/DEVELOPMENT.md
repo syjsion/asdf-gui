@@ -12,8 +12,9 @@ This document is the handoff/reference for future development, especially when u
 - Swift + SwiftUI + Foundation. Avoid React, Electron, Tauri and WebView.
 - Prefer Apple frameworks and keep third-party dependencies at zero unless a dependency clearly reduces maintenance risk.
 - Keep CLI parsing out of SwiftUI views.
-- Never build commands through `/bin/zsh -c` when `Process.executableURL` + `arguments` can express the operation safely.
+- Never build normal asdf commands through `/bin/zsh -c` when `Process.executableURL` + `arguments` can express the operation safely.
 - Destructive operations must show impact and require explicit user confirmation.
+- Only one long-running/write asdf operation may run application-wide at a time.
 - MVP assumes non-App-Sandbox distribution (Developer ID + notarized DMG later).
 - Project configuration is read from disk when displayed/refreshed. Do not duplicate `.tool-versions` contents into persistent app state.
 - Version-browser results are ephemeral. Do not persist large `list all` results.
@@ -32,22 +33,24 @@ SwiftUI Views
           -> ProjectInstallPlanner
           -> FileManager
       -> VersionCatalog
+      -> VersionUsageInspector
       -> PreferencesStore
           -> UserDefaults
 ```
 
 ### Responsibilities
 
-- `AppModel`: UI-facing state and orchestration. Keep it `@MainActor`. It joins project requirements with current asdf state, owns the single active install task, owns transient version-browser state, and must not parse command output itself.
-- `AsdfService`: typed asdf operations and output parsing, including installed/available/latest version queries and runtime installation.
-- `AsdfCommandRunner`: process execution, stdout/stderr draining, output streaming, result collection, and cancellation only. It should not know product/asdf concepts.
+- `AppModel`: UI-facing state and orchestration. Keep it `@MainActor`. It joins project requirements with current asdf state, owns transient version-browser state, and owns the currently active project-install or general version-operation task. It must not parse command output itself.
+- `AsdfService`: typed asdf operations and output parsing, including installed/available/latest queries, runtime installation and runtime uninstallation.
+- `AsdfCommandRunner`: process execution, stdout/stderr draining, output streaming, result collection and cancellation only. It should not know product/asdf concepts.
 - `ProjectService`: reads project-local configuration and produces snapshots for the UI. It must not mutate `.tool-versions` unless a future explicit mutation API is added.
 - `ToolVersionsParser`: deterministic parser for `.tool-versions`; preserve version/fallback order.
 - `RequirementStatusResolver`: pure mapping from a required version + plugin/installed state to UI-neutral availability state.
 - `ProjectInstallPlanner`: pure decision layer that chooses which missing runtime should be installed for each unsatisfied project requirement.
-- `VersionCatalog`: pure merge/deduplication layer for available, installed, and latest versions used by the Versions UI.
+- `VersionCatalog`: pure merge/deduplication layer for available, installed and latest versions used by the Versions UI.
+- `VersionUsageInspector`: pure project-impact lookup used before uninstalling an installed version.
 - `PreferencesStore`: lightweight app preferences only (selected asdf path and known project paths for now).
-- Views: rendering and user interaction. No command construction or output parsing.
+- Views: rendering and user interaction. No command construction or command-output parsing.
 
 ## Command runner contract
 
@@ -58,7 +61,7 @@ It provides:
 - Direct executable + argument invocation; no shell-string interpolation.
 - Concurrent draining of stdout and stderr while the process is running, avoiding Pipe-buffer deadlocks on verbose installs/builds.
 - An optional `onOutput` callback that receives `AsdfOutputEvent` chunks as they arrive.
-- A complete `AsdfCommandResult` containing stdout, stderr, and exit code after termination.
+- A complete `AsdfCommandResult` containing stdout, stderr and exit code after termination.
 - Swift task cancellation: cancelling the task terminates the underlying `Process` and the async call resolves with `CancellationError`.
 
 Important for future UI/task work:
@@ -67,10 +70,11 @@ Important for future UI/task work:
 - Output events are chunks, not guaranteed complete lines. Do not build parsers that assume one callback equals one line.
 - Typed parsers should continue using the complete `AsdfCommandResult` unless real-time parsing is specifically required.
 - Long-running operations should be owned by a cancellable Swift `Task`; do not create a second process-cancellation mechanism in the View layer.
+- Project installs and general version install/uninstall operations share one global mutual-exclusion policy. Do not allow two asdf write tasks to run concurrently without a deliberate, documented redesign.
 
 ## Project install workflow
 
-`Install Missing` is the first write/long-running workflow exposed by the UI. Its behavior is intentionally conservative and deterministic.
+`Install Missing` is the project-centric runtime-install workflow. Its behavior is intentionally conservative and deterministic.
 
 Planning rules:
 
@@ -85,27 +89,26 @@ Execution rules:
 
 - Execute each planned item as `asdf install <tool> <version>` with the project directory as `Process.currentDirectoryURL`.
 - Run planned items sequentially so output and failure ownership are clear.
-- Only one install task may run application-wide at a time.
 - Surface stdout and stderr live in the Projects task panel.
-- The in-memory task log is not persisted and is capped at 200,000 characters; older output is truncated.
+- Task logs are in-memory only and capped at 200,000 characters; older output is truncated.
 - Cancelling the Swift task propagates to `AsdfCommandRunner`, which terminates the current process. No later planned items start after cancellation.
 - Stop the plan on the first failed install and keep its error/log visible.
-- After a fully successful plan, refresh `asdf list <tool>` state so the project UI immediately reflects installed versions.
+- After a fully successful plan, refresh installed-version state so the project UI immediately reflects the new runtime availability.
 - Completed/failed/cancelled tasks remain visible until explicitly dismissed.
 
 Do not broaden this workflow to auto-install missing plugins. Plugin installation is a separate explicit action with its own UX and policy.
 
-## Versions browser contract
+## Versions browser and general version-management contract
 
-The Versions screen is intentionally lazy and read-only in this phase.
+The Versions screen is lazy: data is loaded only for the selected installed plugin.
 
-Commands used for the selected installed plugin:
+Read commands:
 
 - `asdf list <tool>` -> installed versions.
 - `asdf latest <tool>` -> latest stable version reported by the plugin.
 - `asdf list all <tool>` -> available versions.
 
-Rules:
+Read rules:
 
 - Do not eagerly run `asdf list all` for every installed plugin at app launch. Some plugins return large lists or perform relatively expensive work.
 - Load version data only when the user selects a plugin or explicitly refreshes it.
@@ -114,7 +117,25 @@ Rules:
 - Results are transient and are not persisted to `UserDefaults`.
 - `VersionCatalog` merges available + installed + latest with stable order and deduplication. This preserves old installed versions that are no longer in `list all` and preserves a latest value even if it is missing from the available list.
 - Search and the All/Installed filter are UI-only operations and do not execute additional asdf commands.
-- General install/uninstall actions are intentionally not exposed from the Versions screen yet. Reuse/generalize the existing task infrastructure before adding them.
+
+Write commands:
+
+- Install: `asdf install <tool> <version>`.
+- Uninstall: `asdf uninstall <tool> <version>`.
+
+Write rules:
+
+- A non-installed version may be explicitly installed from the Versions table.
+- An installed version may be uninstalled only after an explicit destructive confirmation.
+- Before presenting uninstall confirmation, `VersionUsageInspector` scans the current in-memory `ProjectSnapshot` list (which is sourced from project `.tool-versions` files) and returns every managed project that explicitly references the exact `<tool>, <version>` pair.
+- Fallback references still count as usage. If a project lists `python 3.13.2 3.12.9 system`, uninstalling `3.12.9` must show that project in the impact list.
+- Usage matching is exact. Do not treat prefixes as references.
+- The confirmation must remain available even when zero projects reference the version; uninstall is always destructive.
+- When projects reference a version, the UI should explain that uninstalling may leave those projects missing a runtime unless another configured fallback remains usable.
+- Version install/uninstall uses the same streaming/cancellable command runner as project installs.
+- Only one long-running/write operation may run application-wide. A Versions operation blocks Project `Install Missing`, and vice versa.
+- On successful install/uninstall, refresh project installed-version state and refresh the selected tool's installed-version list so UI status changes immediately.
+- Do not modify `.tool-versions` as a side effect of version install/uninstall.
 
 ## Persistence decisions
 
@@ -131,7 +152,8 @@ Not persisted:
 - asdf plugin/version state.
 - installed/available/latest lookup results.
 - command/task output.
-- install task state.
+- project install task state.
+- version operation task state.
 
 If App Sandbox support is introduced later, project access will need security-scoped bookmarks and this section must be updated before changing the persistence format.
 
@@ -150,15 +172,20 @@ Implemented:
 - `asdf list all <tool>` available-version lookup.
 - `asdf latest <tool>` latest-version lookup.
 - Typed `asdf install <tool> <version>` operation with streamed output.
+- Typed `asdf uninstall <tool> <version>` operation with streamed output.
 - Overview, Projects, Versions and Plugins screens.
 - Projects add/remove and persisted known project paths.
 - Read-only `.tool-versions` parsing, including multiple fallback versions per tool and inline comments.
 - Project state for missing folders or missing `.tool-versions` files.
 - Per-version project availability: Installed, Missing, System, Local path, Plugin missing, or Unknown.
 - Fallback-aware requirement readiness.
-- `Install Missing` planning, sequential install task, live log, cancellation, single-task mutual exclusion, and post-success refresh.
-- Lazy Versions browser with plugin selection, Installed/Latest/Available summary, All/Installed scope, search, partial-error display, and version catalog deduplication.
-- Parser, availability-resolution, install-planning, version-catalog, project snapshot, persistence, command streaming, and command cancellation tests.
+- `Install Missing` planning, sequential install task, live log, cancellation and post-success refresh.
+- Lazy Versions browser with plugin selection, Installed/Latest/Available summary, All/Installed scope, search, partial-error display and version catalog deduplication.
+- Per-version Install and Uninstall actions in Versions.
+- Explicit uninstall confirmation with managed-project usage impact list.
+- General version operation task panel with live stdout/stderr, cancellation, failure retention and log truncation.
+- Global mutual exclusion between project install tasks and general version operations.
+- Parser, availability-resolution, install-planning, version-catalog, version-usage, project snapshot, persistence, command streaming and command cancellation tests.
 - macOS GitHub Actions CI running `swift test`.
 
 Run locally:
@@ -195,9 +222,9 @@ Xcode can open `Package.swift` directly.
 - [x] Dedicated installed/available versions browser.
 - [x] Available versions: `asdf list all <tool>`.
 - [x] Latest version lookup.
-- [ ] General install/uninstall with task log.
+- [x] General install/uninstall with task log.
 - [ ] Set project/home versions through `asdf set`.
-- [ ] Show known projects using a version before uninstall.
+- [x] Show known projects using a version before uninstall.
 
 ### Phase 4 — Plugins and diagnostics
 
@@ -241,6 +268,7 @@ Keep these behaviors aligned with current official asdf documentation before cha
 - `asdf list all <tool>` lists versions available from the plugin.
 - `asdf latest <tool>` returns the latest stable version reported by the plugin.
 - `asdf install <tool> <version>` installs a specific runtime version for an installed plugin.
+- `asdf uninstall <tool> <version>` uninstalls a specific installed runtime version. For `ref:*` installs, use the same reference string when uninstalling.
 - `asdf install` with no tool/version arguments installs the tools defined by the `.tool-versions` file in the command's working directory.
 - `asdf set <tool> <version...>` writes project-local configuration; `asdf set -u` writes the home-level configuration.
 - `.tool-versions` should contain exact versions (plus supported special values such as `system`, `ref:*`, and `path:*`), not a moving `latest` value.
@@ -255,16 +283,17 @@ When asking Codex to modify this repository, include these rules in the prompt:
 2. Preserve the SwiftUI/Foundation-only architecture unless the task explicitly changes it.
 3. Keep asdf CLI calls behind `AsdfService` and process handling behind `AsdfCommandRunner`.
 4. Keep project file reads/writes behind `ProjectService` or a dedicated file service.
-5. Keep availability, install-planning, and version-catalog decisions in pure non-UI logic so they can be unit tested.
+5. Keep availability, install-planning, version-catalog and usage-impact decisions in pure non-UI logic so they can be unit tested.
 6. Long-running operations must use the existing streaming/cancellable command runner; do not add another Process wrapper.
-7. Preserve the single-active-install-task rule unless a deliberate concurrency design is documented and tested.
-8. Do not auto-install plugins as a side effect of runtime installation.
-9. Do not eagerly query all available versions for every plugin; the Versions screen must remain lazy.
-10. Add or update tests for parsers and non-UI logic.
-11. Do not introduce shell-string command execution for normal asdf commands.
-12. Do not silently change `.tool-versions`; mutations need explicit UI intent.
-13. Update this document when architecture, commands, persistence, distribution, task policy, version-browser policy, or roadmap status changes.
-14. Run `swift test` and report failures before considering a change complete.
+7. Preserve the single-active-write-operation rule unless a deliberate concurrency design is documented and tested.
+8. Destructive runtime/plugin removal must remain explicitly confirmed and surface known impact before execution.
+9. Do not auto-install plugins as a side effect of runtime installation.
+10. Do not eagerly query all available versions for every plugin; the Versions screen must remain lazy.
+11. Add or update tests for parsers and non-UI logic.
+12. Do not introduce shell-string command execution for normal asdf commands.
+13. Do not silently change `.tool-versions`; mutations need explicit UI intent.
+14. Update this document when architecture, commands, persistence, distribution, task policy, version-management policy or roadmap status changes.
+15. Run `swift test` and report failures before considering a change complete.
 
 Suggested Codex prompt:
 
@@ -273,11 +302,11 @@ Read docs/DEVELOPMENT.md first and follow its architecture/constraints.
 Implement <task> in small focused changes. Keep CLI construction in AsdfService,
 process execution in AsdfCommandRunner, project file access in ProjectService,
 and UI logic in SwiftUI views/models. Reuse the existing streaming/cancellable
-runner for long operations and preserve the documented install/version-browser
-policies. Keep status/planning/catalog decisions in pure testable logic. Add tests
-for parsing and non-UI behavior. Run swift test. Update DEVELOPMENT.md if this
-changes architecture, supported asdf commands, persistence, task policy,
-version-browser policy, or roadmap status.
+runner and preserve the documented single-write-operation and destructive-action
+policies. Keep status/planning/catalog/impact decisions in pure testable logic.
+Add tests for parsing and non-UI behavior. Run swift test. Update DEVELOPMENT.md
+if this changes architecture, supported asdf commands, persistence, task policy,
+version-management policy, or roadmap status.
 ```
 
 ## Design principles
