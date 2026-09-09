@@ -1,6 +1,7 @@
 import SwiftUI
 
 @main
+@MainActor
 struct AsdfGUIApp: App {
     @State private var model = AppModel()
 
