@@ -29,15 +29,18 @@ You can also open `Package.swift` in Xcode and run the `asdf-gui` executable tar
 - Read each project's `.tool-versions`, including comments and fallback version chains.
 - Compare project requirements with `asdf list <tool>` and show Installed, Missing, System, Local path, Plugin missing, or Unknown state.
 - Install the first missing runtime for each fully unsatisfied project requirement with a live stdout/stderr log and cancellation.
-- Run at most one install task at a time and refresh installed-version state after success.
 - Browse versions per installed plugin with `asdf list`, `asdf latest`, and `asdf list all`.
 - Search the version catalog and switch between all versions and installed-only results.
-- Keep old installed versions and latest versions visible even when they are absent from the current available-version list.
+- Install an individual available version from the Versions screen with a live cancellable task log.
+- Uninstall an installed version only after an explicit destructive confirmation.
+- Before uninstalling, show every managed project whose `.tool-versions` explicitly references that tool/version.
+- Keep project install tasks and general version operations mutually exclusive so only one asdf write task runs at a time.
+- Refresh project/runtime availability immediately after successful install or uninstall operations.
 - Persist known project paths without copying project configuration, runtime state, version-browser results, or task logs into app storage.
 - Native SwiftUI sidebar with Overview, Projects, Versions and Plugins screens.
-- Unit tests for process streaming/cancellation, asdf/plugin output, installed/available versions, version catalog merging, `.tool-versions`, install planning, availability decisions, project snapshots and preferences.
+- Unit tests for process streaming/cancellation, asdf/plugin output, version catalog merging, project usage checks, `.tool-versions`, install planning, availability decisions, project snapshots and preferences.
 - macOS GitHub Actions CI running `swift test`.
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability/install semantics, version-browser policy, safety rules for CLI/file mutations and a reusable Codex prompt.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability/install semantics, version-management safety rules, command assumptions and a reusable Codex prompt.
