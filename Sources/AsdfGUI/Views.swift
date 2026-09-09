@@ -15,6 +15,7 @@ struct ContentView: View {
             switch selection ?? .overview {
             case .overview: OverviewView()
             case .projects: ProjectsView()
+            case .versions: VersionsView()
             case .plugins: PluginsView()
             }
         }
@@ -23,7 +24,7 @@ struct ContentView: View {
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case overview, projects, plugins
+    case overview, projects, versions, plugins
 
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
@@ -32,6 +33,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .overview: "gauge.with.dots.needle.67percent"
         case .projects: "folder"
+        case .versions: "square.stack.3d.up"
         case .plugins: "shippingbox"
         }
     }
@@ -162,8 +164,7 @@ struct InstallTaskPanel: View {
 
                 HStack(spacing: 8) {
                     Text(task.project.name).fontWeight(.medium)
-                    Text("•")
-                        .foregroundStyle(.tertiary)
+                    Text("•").foregroundStyle(.tertiary)
                     Text("\(task.items.count) planned runtime\(task.items.count == 1 ? "" : "s")")
                         .foregroundStyle(.secondary)
                 }
@@ -276,10 +277,8 @@ struct RequirementRow: View {
                 ForEach(Array(requirement.versions.enumerated()), id: \.offset) { index, version in
                     let status = model.status(for: requirement.tool, version: version)
                     HStack(spacing: 6) {
-                        Image(systemName: status.symbolName)
-                            .frame(width: 16)
-                        Text(version)
-                            .textSelection(.enabled)
+                        Image(systemName: status.symbolName).frame(width: 16)
+                        Text(version).textSelection(.enabled)
                         Text(status.title)
                             .font(.caption)
                             .foregroundStyle(status.isAttentionNeeded ? .red : .secondary)
@@ -299,6 +298,192 @@ struct RequirementRow: View {
                 }
             }
         }
+    }
+}
+
+struct VersionsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var selectedTool: String?
+    @State private var searchText = ""
+    @State private var scope: VersionBrowserScope = .all
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Versions").font(.largeTitle.bold())
+                    Text("Browse installed, latest, and available versions for each installed plugin.")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if model.isLoadingVersionBrowser {
+                    ProgressView().controlSize(.small)
+                }
+                Button("Refresh", systemImage: "arrow.clockwise") {
+                    guard let selectedTool else { return }
+                    Task { await model.loadVersionBrowser(tool: selectedTool) }
+                }
+                .disabled(selectedTool == nil || model.isLoadingVersionBrowser)
+            }
+
+            if model.plugins.isEmpty && !model.isLoading {
+                ContentUnavailableView(
+                    "No plugins",
+                    systemImage: "shippingbox",
+                    description: Text("Install an asdf plugin before browsing runtime versions.")
+                )
+            } else {
+                HSplitView {
+                    List(model.plugins, selection: $selectedTool) { plugin in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(plugin.name).fontWeight(.medium)
+                            if let count = model.installedVersionsByTool[plugin.name]?.count {
+                                Text("\(count) installed")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(plugin.name)
+                    }
+                    .frame(minWidth: 170, idealWidth: 210, maxWidth: 250)
+
+                    VersionBrowserDetail(searchText: searchText, scope: scope)
+                        .frame(minWidth: 440)
+                }
+            }
+        }
+        .padding(28)
+        .searchable(text: $searchText, prompt: "Filter versions")
+        .toolbar {
+            ToolbarItem {
+                Picker("Scope", selection: $scope) {
+                    ForEach(VersionBrowserScope.allCases) { item in
+                        Text(item.title).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+            }
+        }
+        .onAppear {
+            if selectedTool == nil {
+                selectedTool = model.plugins.first?.name
+            }
+        }
+        .onChange(of: model.plugins) { _, plugins in
+            if let selectedTool, plugins.contains(where: { $0.name == selectedTool }) {
+                return
+            }
+            selectedTool = plugins.first?.name
+        }
+        .task(id: selectedTool) {
+            guard let selectedTool else {
+                model.resetVersionBrowser()
+                return
+            }
+            await model.loadVersionBrowser(tool: selectedTool)
+        }
+    }
+}
+
+private enum VersionBrowserScope: String, CaseIterable, Identifiable {
+    case all
+    case installed
+
+    var id: String { rawValue }
+    var title: String { self == .all ? "All" : "Installed" }
+}
+
+private struct VersionBrowserDetail: View {
+    @Environment(AppModel.self) private var model
+    let searchText: String
+    let scope: VersionBrowserScope
+
+    var records: [ToolVersionRecord] {
+        var records = VersionCatalog.records(
+            available: model.versionBrowserAvailableVersions,
+            installed: model.versionBrowserInstalledVersions,
+            latest: model.versionBrowserLatestVersion
+        )
+
+        if scope == .installed {
+            records = records.filter(\.isInstalled)
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            records = records.filter { $0.version.localizedCaseInsensitiveContains(query) }
+        }
+        return records
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let tool = model.versionBrowserTool {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(tool).font(.title2.bold())
+                    Spacer()
+                    Text("\(model.versionBrowserInstalledVersions.count) installed")
+                        .foregroundStyle(.secondary)
+                }
+
+                GroupBox {
+                    LabeledContent("Latest", value: model.versionBrowserLatestVersion ?? "—")
+                    Divider()
+                    LabeledContent("Available", value: "\(model.versionBrowserAvailableVersions.count)")
+                    Divider()
+                    LabeledContent("Installed", value: "\(model.versionBrowserInstalledVersions.count)")
+                }
+
+                if !model.versionBrowserErrors.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(model.versionBrowserErrors, id: \.self) { error in
+                            Label(error, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.red)
+                                .font(.callout)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+
+                if records.isEmpty && !model.isLoadingVersionBrowser {
+                    ContentUnavailableView(
+                        scope == .installed ? "No installed versions" : "No matching versions",
+                        systemImage: "square.stack.3d.up.slash",
+                        description: Text(searchText.isEmpty ? "No versions were returned for this plugin." : "Try a different search term.")
+                    )
+                } else {
+                    Table(records) {
+                        TableColumn("Version") { record in
+                            Text(record.version)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                        }
+                        TableColumn("Status") { record in
+                            HStack(spacing: 8) {
+                                if record.isInstalled {
+                                    Label("Installed", systemImage: "checkmark.circle.fill")
+                                }
+                                if record.isLatest {
+                                    Label("Latest", systemImage: "star.fill")
+                                }
+                                if !record.isInstalled && !record.isLatest {
+                                    Text("Available").foregroundStyle(.secondary)
+                                }
+                            }
+                            .font(.callout)
+                        }
+                    }
+                }
+            } else {
+                ContentUnavailableView(
+                    "Select a plugin",
+                    systemImage: "shippingbox",
+                    description: Text("Choose an installed asdf plugin to browse its versions.")
+                )
+            }
+        }
+        .padding(.leading, 12)
     }
 }
 
