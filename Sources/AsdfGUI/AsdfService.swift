@@ -17,6 +17,11 @@ enum AsdfError: LocalizedError {
     }
 }
 
+enum AsdfVersionSetScope: Hashable {
+    case project(URL)
+    case home
+}
+
 struct AsdfService {
     private let runner = AsdfCommandRunner()
 
@@ -74,6 +79,42 @@ struct AsdfService {
         let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { throw AsdfError.commandFailed("asdf latest returned no version for \(tool).") }
         return value
+    }
+
+    func setVersion(
+        executable: URL,
+        tool: String,
+        versions: [String],
+        scope: AsdfVersionSetScope
+    ) async throws -> AsdfCommandResult {
+        guard !versions.isEmpty else {
+            throw AsdfError.commandFailed("At least one version is required for asdf set.")
+        }
+
+        var arguments = ["set"]
+        var currentDirectory: URL?
+
+        switch scope {
+        case .project(let directory):
+            currentDirectory = directory
+        case .home:
+            arguments.append("-u")
+        }
+
+        arguments.append(tool)
+        arguments.append(contentsOf: versions)
+
+        let result = try await runner.run(
+            executable: executable,
+            arguments: arguments,
+            currentDirectory: currentDirectory
+        )
+
+        guard result.exitCode == 0 else {
+            let message = result.stderr.isEmpty ? result.stdout : result.stderr
+            throw AsdfError.commandFailed(message)
+        }
+        return result
     }
 
     func installVersion(
