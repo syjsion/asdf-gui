@@ -394,6 +394,7 @@ private enum VersionBrowserScope: String, CaseIterable, Identifiable {
     var title: String { self == .all ? "All" : "Installed" }
 }
 
+@MainActor
 private struct VersionBrowserDetail: View {
     @Environment(AppModel.self) private var model
     let searchText: String
