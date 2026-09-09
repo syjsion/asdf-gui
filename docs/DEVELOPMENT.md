@@ -24,7 +24,7 @@ SwiftUI Views
   -> AppModel / feature state
       -> AsdfService
           -> AsdfCommandRunner
-              -> Foundation.Process
+              -> Foundation.Process + Pipe
       -> ProjectService
           -> ToolVersionsParser
           -> RequirementStatusResolver
@@ -37,12 +37,31 @@ SwiftUI Views
 
 - `AppModel`: UI-facing state and orchestration. Keep it `@MainActor`. It joins project requirements with current asdf state but should not parse command output itself.
 - `AsdfService`: typed asdf operations and output parsing, including installed-version queries.
-- `AsdfCommandRunner`: process execution only. It should not know product concepts.
+- `AsdfCommandRunner`: process execution, stdout/stderr draining, output streaming, result collection, and cancellation only. It should not know product/asdf concepts.
 - `ProjectService`: reads project-local configuration and produces snapshots for the UI. It must not mutate `.tool-versions` unless a future explicit mutation API is added.
 - `ToolVersionsParser`: deterministic parser for `.tool-versions`; preserve version/fallback order.
 - `RequirementStatusResolver`: pure mapping from a required version + plugin/installed state to UI-neutral availability state.
 - `PreferencesStore`: lightweight app preferences only (selected asdf path and known project paths for now).
 - Views: rendering and user interaction. No command construction or output parsing.
+
+## Command runner contract
+
+`AsdfCommandRunner.run` is the only normal process-execution primitive for asdf commands.
+
+It provides:
+
+- Direct executable + argument invocation; no shell-string interpolation.
+- Concurrent draining of stdout and stderr while the process is running, avoiding Pipe-buffer deadlocks on verbose installs/builds.
+- An optional `onOutput` callback that receives `AsdfOutputEvent` chunks as they arrive.
+- A complete `AsdfCommandResult` containing stdout, stderr, and exit code after termination.
+- Swift task cancellation: cancelling the task terminates the underlying `Process` and the async call resolves with `CancellationError`.
+
+Important for future UI/task work:
+
+- `onOutput` is invoked from process/file-handle callbacks and is not main-actor isolated. UI state updates must hop to `MainActor`.
+- Output events are chunks, not guaranteed complete lines. Do not build parsers that assume one callback equals one line.
+- Typed parsers should continue using the complete `AsdfCommandResult` unless real-time parsing is specifically required.
+- Long-running operations should be owned by a cancellable Swift `Task`; do not create a second process-cancellation mechanism in the View layer.
 
 ## Persistence decisions
 
@@ -70,6 +89,7 @@ Implemented:
 - Common-path asdf executable discovery.
 - Manual asdf executable selection with executable validation.
 - Persisted custom executable preference with reset to auto-detection.
+- Streaming, continuously drained, cancellable Foundation `Process` runner.
 - `asdf version` status.
 - `asdf plugin list --urls` parsing.
 - `asdf list <tool>` installed-version lookup and parser.
@@ -80,7 +100,7 @@ Implemented:
 - Project state for missing folders or missing `.tool-versions` files.
 - Per-version availability in Projects: Installed, Missing, System, Local path, Plugin missing, or Unknown.
 - Fallback-aware requirement readiness: a requirement is ready when at least one configured fallback is available.
-- Parser, availability-resolution, project snapshot, and persistence unit tests.
+- Parser, availability-resolution, project snapshot, persistence, command streaming, and command cancellation unit tests.
 - macOS GitHub Actions CI running `swift test`.
 
 Run locally:
@@ -101,14 +121,14 @@ Xcode can open `Package.swift` directly.
 - [x] asdf detection/version/plugin list.
 - [x] Basic parsing tests.
 - [x] Manual executable picker + persisted preference.
-- [ ] Better process cancellation and streaming output.
+- [x] Process cancellation and streaming output.
 
 ### Phase 2 — Projects
 
 - [x] Add/remove known project folders.
 - [x] Parse `.tool-versions` without mutating it.
 - [x] Show required vs installed versions.
-- [ ] `Install missing versions` action.
+- [ ] `Install missing versions` action with task log/cancel UI.
 - [x] Persist project list.
 
 ### Phase 3 — Version management
@@ -177,11 +197,12 @@ When asking Codex to modify this repository, include these rules in the prompt:
 3. Keep asdf CLI calls behind `AsdfService` and process handling behind `AsdfCommandRunner`.
 4. Keep project file reads/writes behind `ProjectService` or a dedicated file service.
 5. Keep availability/status decisions in pure non-UI logic so they can be unit tested.
-6. Add or update tests for parsers and non-UI logic.
-7. Do not introduce shell-string command execution for normal asdf commands.
-8. Do not silently change `.tool-versions`; mutations need explicit UI intent.
-9. Update this document when architecture, commands, persistence, distribution, or roadmap status changes.
-10. Run `swift test` and report failures before considering a change complete.
+6. Long-running operations must use the existing streaming/cancellable command runner; do not add another Process wrapper.
+7. Add or update tests for parsers and non-UI logic.
+8. Do not introduce shell-string command execution for normal asdf commands.
+9. Do not silently change `.tool-versions`; mutations need explicit UI intent.
+10. Update this document when architecture, commands, persistence, distribution, or roadmap status changes.
+11. Run `swift test` and report failures before considering a change complete.
 
 Suggested Codex prompt:
 
@@ -189,9 +210,10 @@ Suggested Codex prompt:
 Read docs/DEVELOPMENT.md first and follow its architecture/constraints.
 Implement <task> in small focused changes. Keep CLI construction in AsdfService,
 process execution in AsdfCommandRunner, project file access in ProjectService,
-and UI logic in SwiftUI views/models. Keep status decisions in pure testable logic.
-Add tests for parsing/non-UI behavior. Run swift test. Update DEVELOPMENT.md if
-this changes architecture, supported asdf commands, persistence, or roadmap status.
+and UI logic in SwiftUI views/models. Reuse the existing streaming/cancellable
+runner for long operations. Keep status decisions in pure testable logic. Add
+tests for parsing/non-UI behavior. Run swift test. Update DEVELOPMENT.md if this
+changes architecture, supported asdf commands, persistence, or roadmap status.
 ```
 
 ## Design principles
