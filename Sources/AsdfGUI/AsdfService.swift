@@ -62,6 +62,27 @@ struct AsdfService {
         return Self.parseInstalledVersions(result.stdout)
     }
 
+    func installVersion(
+        executable: URL,
+        tool: String,
+        version: String,
+        currentDirectory: URL,
+        onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
+    ) async throws -> AsdfCommandResult {
+        let result = try await runner.run(
+            executable: executable,
+            arguments: ["install", tool, version],
+            currentDirectory: currentDirectory,
+            onOutput: onOutput
+        )
+
+        guard result.exitCode == 0 else {
+            let message = result.stderr.isEmpty ? result.stdout : result.stderr
+            throw AsdfError.commandFailed(message)
+        }
+        return result
+    }
+
     static func parsePlugins(_ output: String) -> [AsdfPlugin] {
         output.split(whereSeparator: { $0.isNewline }).compactMap { line in
             let parts = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).map(String.init)
