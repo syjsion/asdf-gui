@@ -17,8 +17,13 @@ enum VersionCatalog {
         let installedSet = Set(installed)
         var seen = Set<String>()
         var ordered: [String] = []
+        var candidates = available + installed
 
-        for version in available + installed where seen.insert(version).inserted {
+        if let latest, !latest.isEmpty {
+            candidates.append(latest)
+        }
+
+        for version in candidates where seen.insert(version).inserted {
             ordered.append(version)
         }
 
