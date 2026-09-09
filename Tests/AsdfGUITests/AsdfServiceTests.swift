@@ -19,4 +19,21 @@ final class AsdfServiceTests: XCTestCase {
         let plugins = AsdfService.parsePlugins("nodejs\n")
         XCTAssertEqual(plugins, [AsdfPlugin(name: "nodejs", url: nil)])
     }
+
+    func testParseInstalledVersionsTrimsWhitespaceAndCurrentMarker() {
+        let output = """
+          20.19.4
+         *22.18.0
+          ref:feature-branch
+        """
+
+        XCTAssertEqual(
+            AsdfService.parseInstalledVersions(output),
+            ["20.19.4", "22.18.0", "ref:feature-branch"]
+        )
+    }
+
+    func testParseInstalledVersionsHandlesEmptyOutput() {
+        XCTAssertTrue(AsdfService.parseInstalledVersions("\n").isEmpty)
+    }
 }

@@ -83,11 +83,28 @@ struct AsdfService {
         return Self.parsePlugins(result.stdout)
     }
 
+    func installedVersions(executable: URL, tool: String) async throws -> [String] {
+        let result = try await runner.run(executable: executable, arguments: ["list", tool])
+        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
+        return Self.parseInstalledVersions(result.stdout)
+    }
+
     static func parsePlugins(_ output: String) -> [AsdfPlugin] {
         output.split(whereSeparator: { $0.isNewline }).compactMap { line in
             let parts = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).map(String.init)
             guard let name = parts.first, !name.isEmpty else { return nil }
             return AsdfPlugin(name: name, url: parts.count > 1 ? parts[1] : nil)
+        }
+    }
+
+    static func parseInstalledVersions(_ output: String) -> [String] {
+        output.split(whereSeparator: { $0.isNewline }).compactMap { line in
+            var value = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if value.hasPrefix("*") {
+                value.removeFirst()
+                value = value.trimmingCharacters(in: .whitespaces)
+            }
+            return value.isEmpty ? nil : value
         }
     }
 }

@@ -21,6 +21,65 @@ final class ProjectServiceTests: XCTestCase {
         ])
     }
 
+    func testRequirementStatusResolver() {
+        let installed: Set<String> = ["22.18.0"]
+
+        XCTAssertEqual(
+            RequirementStatusResolver.resolve(
+                version: "22.18.0",
+                installedVersions: installed,
+                pluginInstalled: true,
+                lookupFailed: false
+            ),
+            .installed
+        )
+        XCTAssertEqual(
+            RequirementStatusResolver.resolve(
+                version: "20.19.4",
+                installedVersions: installed,
+                pluginInstalled: true,
+                lookupFailed: false
+            ),
+            .missing
+        )
+        XCTAssertEqual(
+            RequirementStatusResolver.resolve(
+                version: "system",
+                installedVersions: installed,
+                pluginInstalled: true,
+                lookupFailed: false
+            ),
+            .system
+        )
+        XCTAssertEqual(
+            RequirementStatusResolver.resolve(
+                version: "path:~/src/node",
+                installedVersions: installed,
+                pluginInstalled: true,
+                lookupFailed: false
+            ),
+            .path
+        )
+        XCTAssertEqual(
+            RequirementStatusResolver.resolve(
+                version: "22.18.0",
+                installedVersions: installed,
+                pluginInstalled: false,
+                lookupFailed: false
+            ),
+            .pluginMissing
+        )
+        XCTAssertEqual(
+            RequirementStatusResolver.resolve(
+                version: "22.18.0",
+                installedVersions: nil,
+                pluginInstalled: true,
+                lookupFailed: true
+            ),
+            .unknown
+        )
+    }
+
     func testSnapshotReadsToolVersionsFile() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -82,10 +82,13 @@ struct ProjectsView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text("Projects").font(.largeTitle.bold())
-                    Text("Read-only view of each project's .tool-versions requirements.")
+                    Text("Compare each project's .tool-versions with runtimes installed by asdf.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if model.isRefreshingVersionStatus {
+                    ProgressView().controlSize(.small)
+                }
                 Button("Add Project", systemImage: "plus") { isAddingProject = true }
             }
 
@@ -110,7 +113,9 @@ struct ProjectsView: View {
         }
         .padding(28)
         .toolbar {
-            Button("Refresh Projects", systemImage: "arrow.clockwise") { model.refreshProjects() }
+            Button("Refresh Projects", systemImage: "arrow.clockwise") {
+                Task { await model.reloadProjects() }
+            }
         }
         .fileImporter(
             isPresented: $isAddingProject,
@@ -133,7 +138,7 @@ struct ProjectRow: View {
     let snapshot: ProjectSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(snapshot.project.name).font(.headline)
@@ -163,19 +168,89 @@ struct ProjectRow: View {
                 Text(".tool-versions contains no tool entries.")
                     .foregroundStyle(.secondary)
             } else {
-                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                VStack(alignment: .leading, spacing: 12) {
                     ForEach(snapshot.requirements) { requirement in
-                        GridRow {
-                            Text(requirement.tool).fontWeight(.medium)
-                            Text(requirement.versions.joined(separator: "  →  "))
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
+                        RequirementRow(requirement: requirement)
                     }
                 }
             }
         }
         .padding(.vertical, 8)
+    }
+}
+
+struct RequirementRow: View {
+    @Environment(AppModel.self) private var model
+    let requirement: ToolRequirement
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 16) {
+            HStack(spacing: 6) {
+                Image(systemName: model.isRequirementSatisfied(requirement) ? "checkmark.circle.fill" : "exclamationmark.circle")
+                Text(requirement.tool).fontWeight(.medium)
+            }
+            .frame(width: 150, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(requirement.versions.enumerated()), id: \.offset) { index, version in
+                    let status = model.status(for: requirement.tool, version: version)
+                    HStack(spacing: 6) {
+                        Image(systemName: status.symbolName)
+                            .frame(width: 16)
+                        Text(version)
+                            .textSelection(.enabled)
+                        Text(status.title)
+                            .font(.caption)
+                            .foregroundStyle(status.isAttentionNeeded ? .red : .secondary)
+                        if index < requirement.versions.count - 1 {
+                            Text("fallback")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+
+                if let error = model.versionLookupErrors[requirement.tool] {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+}
+
+private extension RequirementVersionStatus {
+    var title: String {
+        switch self {
+        case .installed: "Installed"
+        case .missing: "Missing"
+        case .system: "System"
+        case .path: "Local path"
+        case .pluginMissing: "Plugin missing"
+        case .unknown: "Unknown"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .installed: "checkmark.circle.fill"
+        case .missing: "arrow.down.circle"
+        case .system: "desktopcomputer"
+        case .path: "folder"
+        case .pluginMissing: "shippingbox.and.arrow.backward"
+        case .unknown: "questionmark.circle"
+        }
+    }
+
+    var isAttentionNeeded: Bool {
+        switch self {
+        case .missing, .pluginMissing:
+            return true
+        case .installed, .system, .path, .unknown:
+            return false
+        }
     }
 }
 

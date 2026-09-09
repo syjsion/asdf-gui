@@ -26,12 +26,13 @@ You can also open `Package.swift` in Xcode and run the `asdf-gui` executable tar
 - Show asdf version and active executable path.
 - List installed plugins and repository URLs.
 - Add/remove known project folders.
-- Read and visualize each project's `.tool-versions`, including fallback version chains.
-- Persist known project paths without copying project configuration into app storage.
+- Read each project's `.tool-versions`, including comments and fallback version chains.
+- Compare project requirements with `asdf list <tool>` and show Installed, Missing, System, Local path, Plugin missing, or Unknown state.
+- Persist known project paths without copying project configuration or runtime state into app storage.
 - Native SwiftUI sidebar with Overview, Projects and Plugins screens.
-- Unit tests for asdf/plugin parsing, `.tool-versions` parsing and preferences.
+- Unit tests for asdf/plugin output, installed versions, `.tool-versions`, availability decisions, project snapshots and preferences.
 - macOS GitHub Actions CI running `swift test`.
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, safety rules for CLI/file mutations and a reusable Codex prompt.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability semantics, safety rules for CLI/file mutations and a reusable Codex prompt.
