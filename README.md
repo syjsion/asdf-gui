@@ -30,11 +30,14 @@ You can also open `Package.swift` in Xcode and run the `asdf-gui` executable tar
 - Compare project requirements with `asdf list <tool>` and show Installed, Missing, System, Local path, Plugin missing, or Unknown state.
 - Install the first missing runtime for each fully unsatisfied project requirement with a live stdout/stderr log and cancellation.
 - Run at most one install task at a time and refresh installed-version state after success.
-- Persist known project paths without copying project configuration, runtime state, or task logs into app storage.
-- Native SwiftUI sidebar with Overview, Projects and Plugins screens.
-- Unit tests for process streaming/cancellation, asdf/plugin output, installed versions, `.tool-versions`, install planning, availability decisions, project snapshots and preferences.
+- Browse versions per installed plugin with `asdf list`, `asdf latest`, and `asdf list all`.
+- Search the version catalog and switch between all versions and installed-only results.
+- Keep old installed versions and latest versions visible even when they are absent from the current available-version list.
+- Persist known project paths without copying project configuration, runtime state, version-browser results, or task logs into app storage.
+- Native SwiftUI sidebar with Overview, Projects, Versions and Plugins screens.
+- Unit tests for process streaming/cancellation, asdf/plugin output, installed/available versions, version catalog merging, `.tool-versions`, install planning, availability decisions, project snapshots and preferences.
 - macOS GitHub Actions CI running `swift test`.
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability/install semantics, safety rules for CLI/file mutations and a reusable Codex prompt.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability/install semantics, version-browser policy, safety rules for CLI/file mutations and a reusable Codex prompt.

@@ -36,4 +36,18 @@ final class AsdfServiceTests: XCTestCase {
     func testParseInstalledVersionsHandlesEmptyOutput() {
         XCTAssertTrue(AsdfService.parseInstalledVersions("\n").isEmpty)
     }
+
+    func testParseVersionLinesPreservesOrderAndDropsBlankLines() {
+        let output = """
+          18.20.8
+
+          20.19.5
+          22.19.0
+        """
+
+        XCTAssertEqual(
+            AsdfService.parseVersionLines(output),
+            ["18.20.8", "20.19.5", "22.19.0"]
+        )
+    }
 }

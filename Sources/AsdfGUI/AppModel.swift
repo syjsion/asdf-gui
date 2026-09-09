@@ -37,6 +37,14 @@ final class AppModel {
     var projectSnapshots: [ProjectSnapshot] = []
     var installedVersionsByTool: [String: [String]] = [:]
     var versionLookupErrors: [String: String] = [:]
+
+    var versionBrowserTool: String?
+    var versionBrowserInstalledVersions: [String] = []
+    var versionBrowserAvailableVersions: [String] = []
+    var versionBrowserLatestVersion: String?
+    var versionBrowserErrors: [String] = []
+    var isLoadingVersionBrowser = false
+
     var activeInstallTask: ProjectInstallTaskState?
     var isLoading = false
     var isRefreshingVersionStatus = false
@@ -47,6 +55,7 @@ final class AppModel {
     private let preferences = PreferencesStore()
     private let installLogLimit = 200_000
     private var installTask: Task<Void, Never>?
+    private var versionBrowserRequestID: UUID?
 
     init() {
         configuredExecutableURL = preferences.executableURL()
@@ -73,6 +82,7 @@ final class AppModel {
             plugins = []
             installedVersionsByTool = [:]
             versionLookupErrors = [:]
+            resetVersionBrowser()
             errorMessage = error.localizedDescription
         }
     }
@@ -154,6 +164,71 @@ final class AppModel {
         versionLookupErrors = lookupErrors
     }
 
+    func loadVersionBrowser(tool: String) async {
+        guard let executable = executableURL else {
+            resetVersionBrowser()
+            versionBrowserTool = tool
+            versionBrowserErrors = ["asdf executable is not available."]
+            return
+        }
+
+        let requestID = UUID()
+        versionBrowserRequestID = requestID
+        versionBrowserTool = tool
+        versionBrowserInstalledVersions = []
+        versionBrowserAvailableVersions = []
+        versionBrowserLatestVersion = nil
+        versionBrowserErrors = []
+        isLoadingVersionBrowser = true
+
+        defer {
+            if versionBrowserRequestID == requestID {
+                isLoadingVersionBrowser = false
+            }
+        }
+
+        do {
+            let installed = try await service.installedVersions(executable: executable, tool: tool)
+            guard versionBrowserRequestID == requestID else { return }
+            versionBrowserInstalledVersions = installed
+            installedVersionsByTool[tool] = installed
+        } catch is CancellationError {
+            return
+        } catch {
+            appendVersionBrowserError("Installed versions: \(error.localizedDescription)", requestID: requestID)
+        }
+
+        do {
+            let latest = try await service.latestVersion(executable: executable, tool: tool)
+            guard versionBrowserRequestID == requestID else { return }
+            versionBrowserLatestVersion = latest
+        } catch is CancellationError {
+            return
+        } catch {
+            appendVersionBrowserError("Latest version: \(error.localizedDescription)", requestID: requestID)
+        }
+
+        do {
+            let available = try await service.availableVersions(executable: executable, tool: tool)
+            guard versionBrowserRequestID == requestID else { return }
+            versionBrowserAvailableVersions = available
+        } catch is CancellationError {
+            return
+        } catch {
+            appendVersionBrowserError("Available versions: \(error.localizedDescription)", requestID: requestID)
+        }
+    }
+
+    func resetVersionBrowser() {
+        versionBrowserRequestID = nil
+        versionBrowserTool = nil
+        versionBrowserInstalledVersions = []
+        versionBrowserAvailableVersions = []
+        versionBrowserLatestVersion = nil
+        versionBrowserErrors = []
+        isLoadingVersionBrowser = false
+    }
+
     func status(for tool: String, version: String) -> RequirementVersionStatus {
         let installed: Set<String>? = installedVersionsByTool[tool].map { Set($0) }
         return RequirementStatusResolver.resolve(
@@ -207,6 +282,11 @@ final class AppModel {
     func dismissInstallTask() {
         guard activeInstallTask?.isRunning != true else { return }
         activeInstallTask = nil
+    }
+
+    private func appendVersionBrowserError(_ message: String, requestID: UUID) {
+        guard versionBrowserRequestID == requestID else { return }
+        versionBrowserErrors.append(message)
     }
 
     private func runInstallTask(id: UUID, project: ManagedProject, items: [ProjectInstallItem]) async {

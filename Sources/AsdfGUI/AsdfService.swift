@@ -62,6 +62,20 @@ struct AsdfService {
         return Self.parseInstalledVersions(result.stdout)
     }
 
+    func availableVersions(executable: URL, tool: String) async throws -> [String] {
+        let result = try await runner.run(executable: executable, arguments: ["list", "all", tool])
+        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
+        return Self.parseVersionLines(result.stdout)
+    }
+
+    func latestVersion(executable: URL, tool: String) async throws -> String {
+        let result = try await runner.run(executable: executable, arguments: ["latest", tool])
+        guard result.exitCode == 0 else { throw AsdfError.commandFailed(result.stderr) }
+        let value = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { throw AsdfError.commandFailed("asdf latest returned no version for \(tool).") }
+        return value
+    }
+
     func installVersion(
         executable: URL,
         tool: String,
@@ -92,13 +106,16 @@ struct AsdfService {
     }
 
     static func parseInstalledVersions(_ output: String) -> [String] {
-        output.split(whereSeparator: { $0.isNewline }).compactMap { line in
-            var value = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if value.hasPrefix("*") {
-                value.removeFirst()
-                value = value.trimmingCharacters(in: .whitespaces)
-            }
-            return value.isEmpty ? nil : value
-        }
+        parseVersionLines(output).map { value in
+            guard value.hasPrefix("*") else { return value }
+            return value.dropFirst().trimmingCharacters(in: .whitespaces)
+        }.filter { !$0.isEmpty }
+    }
+
+    static func parseVersionLines(_ output: String) -> [String] {
+        output
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
