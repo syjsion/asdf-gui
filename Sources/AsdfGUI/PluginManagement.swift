@@ -26,6 +26,29 @@ enum PluginOperationStatus: Hashable {
     case cancelled
 }
 
+private enum PluginOperationRequest: Hashable {
+    case add(name: String, gitURL: String?)
+    case update(name: String, gitRef: String?)
+    case updateAll
+    case remove(name: String)
+
+    var kind: PluginOperationKind {
+        switch self {
+        case .add: .add
+        case .update: .update
+        case .updateAll: .updateAll
+        case .remove: .remove
+        }
+    }
+
+    var pluginName: String? {
+        switch self {
+        case .add(let name, _), .update(let name, _), .remove(let name): name
+        case .updateAll: nil
+        }
+    }
+}
+
 struct PluginOperationTaskState: Identifiable {
     let id: UUID
     let kind: PluginOperationKind
@@ -82,21 +105,15 @@ final class PluginManagementModel {
             errorMessage = "The \(name) plugin is already installed."
             return
         }
-        start(kind: .add, pluginName: name, appModel: appModel) { service, executable, output in
-            try await service.addPlugin(executable: executable, name: name, gitURL: gitURL, onOutput: output)
-        }
+        start(request: .add(name: name, gitURL: gitURL), appModel: appModel)
     }
 
     func updatePlugin(_ plugin: AsdfPlugin, appModel: AppModel) {
-        start(kind: .update, pluginName: plugin.name, appModel: appModel) { service, executable, output in
-            try await service.updatePlugin(executable: executable, name: plugin.name, onOutput: output)
-        }
+        start(request: .update(name: plugin.name, gitRef: nil), appModel: appModel)
     }
 
     func updateAllPlugins(appModel: AppModel) {
-        start(kind: .updateAll, pluginName: nil, appModel: appModel) { service, executable, output in
-            try await service.updateAllPlugins(executable: executable, onOutput: output)
-        }
+        start(request: .updateAll, appModel: appModel)
     }
 
     func prepareRemoval(of plugin: AsdfPlugin, appModel: AppModel) async {
@@ -132,9 +149,7 @@ final class PluginManagementModel {
     func confirmRemoval(appModel: AppModel) {
         guard let impact = removalImpact else { return }
         removalImpact = nil
-        start(kind: .remove, pluginName: impact.plugin.name, appModel: appModel) { service, executable, output in
-            try await service.removePlugin(executable: executable, name: impact.plugin.name, onOutput: output)
-        }
+        start(request: .remove(name: impact.plugin.name), appModel: appModel)
     }
 
     func cancelRemoval() {
@@ -151,12 +166,7 @@ final class PluginManagementModel {
         activeOperation = nil
     }
 
-    private func start(
-        kind: PluginOperationKind,
-        pluginName: String?,
-        appModel: AppModel,
-        operation: @escaping @Sendable (AsdfService, URL, PluginOutputHandler) async throws -> AsdfCommandResult
-    ) {
+    private func start(request: PluginOperationRequest, appModel: AppModel) {
         guard !isBusy else { return }
         guard let executable = appModel.executableURL else {
             errorMessage = "asdf executable is not available."
@@ -169,13 +179,13 @@ final class PluginManagementModel {
 
         errorMessage = nil
         let id = UUID()
-        let subject = pluginName ?? "installed plugins"
+        let subject = request.pluginName ?? "installed plugins"
         activeOperation = PluginOperationTaskState(
             id: id,
-            kind: kind,
-            pluginName: pluginName,
+            kind: request.kind,
+            pluginName: request.pluginName,
             status: .running,
-            log: "\(kind.verb) \(subject)\n",
+            log: "\(request.kind.verb) \(subject)\n",
             errorMessage: nil
         )
 
@@ -186,15 +196,22 @@ final class PluginManagementModel {
             }
             defer { appModel.endExternalWriteOperation() }
 
-            do {
-                _ = try await operation(service, executable) { [weak self] event in
-                    Task { [weak self] in
-                        await self?.append(event.text, id: id)
-                    }
+            let output: PluginOutputHandler = { [weak self] event in
+                Task { [weak self] in
+                    await self?.append(event.text, id: id)
                 }
+            }
+
+            do {
+                _ = try await self.execute(
+                    request: request,
+                    executable: executable,
+                    output: output
+                )
                 self.finish(id: id, status: .succeeded, error: nil)
                 await appModel.refresh()
-                if let pluginName, appModel.versionBrowserTool == pluginName,
+                if let pluginName = request.pluginName,
+                   appModel.versionBrowserTool == pluginName,
                    !appModel.plugins.contains(where: { $0.name == pluginName }) {
                     appModel.resetVersionBrowser()
                 }
@@ -204,6 +221,33 @@ final class PluginManagementModel {
                 self.append("\n✗ \(error.localizedDescription)\n", id: id)
                 self.finish(id: id, status: .failed, error: error.localizedDescription)
             }
+        }
+    }
+
+    private func execute(
+        request: PluginOperationRequest,
+        executable: URL,
+        output: @escaping PluginOutputHandler
+    ) async throws -> AsdfCommandResult {
+        switch request {
+        case .add(let name, let gitURL):
+            return try await service.addPlugin(
+                executable: executable,
+                name: name,
+                gitURL: gitURL,
+                onOutput: output
+            )
+        case .update(let name, let gitRef):
+            return try await service.updatePlugin(
+                executable: executable,
+                name: name,
+                gitRef: gitRef,
+                onOutput: output
+            )
+        case .updateAll:
+            return try await service.updateAllPlugins(executable: executable, onOutput: output)
+        case .remove(let name):
+            return try await service.removePlugin(executable: executable, name: name, onOutput: output)
         }
     }
 
