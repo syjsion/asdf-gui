@@ -21,13 +21,14 @@ This document is the handoff/reference for future development, especially when u
 
 ```text
 SwiftUI Views
-  -> AppModel / feature state
+  -> AppModel / feature state + task orchestration
       -> AsdfService
           -> AsdfCommandRunner
               -> Foundation.Process + Pipe
       -> ProjectService
           -> ToolVersionsParser
           -> RequirementStatusResolver
+          -> ProjectInstallPlanner
           -> FileManager
       -> PreferencesStore
           -> UserDefaults
@@ -35,12 +36,13 @@ SwiftUI Views
 
 ### Responsibilities
 
-- `AppModel`: UI-facing state and orchestration. Keep it `@MainActor`. It joins project requirements with current asdf state but should not parse command output itself.
-- `AsdfService`: typed asdf operations and output parsing, including installed-version queries.
+- `AppModel`: UI-facing state and orchestration. Keep it `@MainActor`. It joins project requirements with current asdf state, owns the single active install task, and must not parse command output itself.
+- `AsdfService`: typed asdf operations and output parsing, including installed-version queries and version installation.
 - `AsdfCommandRunner`: process execution, stdout/stderr draining, output streaming, result collection, and cancellation only. It should not know product/asdf concepts.
 - `ProjectService`: reads project-local configuration and produces snapshots for the UI. It must not mutate `.tool-versions` unless a future explicit mutation API is added.
 - `ToolVersionsParser`: deterministic parser for `.tool-versions`; preserve version/fallback order.
 - `RequirementStatusResolver`: pure mapping from a required version + plugin/installed state to UI-neutral availability state.
+- `ProjectInstallPlanner`: pure decision layer that chooses which missing runtime should be installed for each unsatisfied project requirement.
 - `PreferencesStore`: lightweight app preferences only (selected asdf path and known project paths for now).
 - Views: rendering and user interaction. No command construction or output parsing.
 
@@ -63,6 +65,33 @@ Important for future UI/task work:
 - Typed parsers should continue using the complete `AsdfCommandResult` unless real-time parsing is specifically required.
 - Long-running operations should be owned by a cancellable Swift `Task`; do not create a second process-cancellation mechanism in the View layer.
 
+## Project install workflow
+
+`Install Missing` is the first write/long-running workflow exposed by the UI. Its behavior is intentionally conservative and deterministic.
+
+Planning rules:
+
+1. Read the project's current `.tool-versions`; do not rewrite it.
+2. For each tool requirement, preserve the configured fallback order.
+3. If any fallback is already satisfied (`Installed`, `System`, or `Local path`), plan no installation for that tool.
+4. If the requirement is fully unsatisfied, choose the first fallback whose current state is `Missing`.
+5. `Plugin missing` and `Unknown` are blocking states and are never silently converted into install operations.
+6. A tool is planned at most once, even if malformed/repeated configuration lines exist.
+
+Execution rules:
+
+- Execute each planned item as `asdf install <tool> <version>` with the project directory as `Process.currentDirectoryURL`.
+- Run planned items sequentially so output and failure ownership are clear.
+- Only one install task may run application-wide at a time.
+- Surface stdout and stderr live in the Projects task panel.
+- The in-memory task log is not persisted and is capped at 200,000 characters; older output is truncated.
+- Cancelling the Swift task propagates to `AsdfCommandRunner`, which terminates the current process. No later planned items start after cancellation.
+- Stop the plan on the first failed install and keep its error/log visible.
+- After a fully successful plan, refresh `asdf list <tool>` state so the project UI immediately reflects installed versions.
+- Completed/failed/cancelled tasks remain visible until explicitly dismissed.
+
+Do not broaden this workflow to auto-install missing plugins. Plugin installation is a separate explicit action with its own UX and policy.
+
 ## Persistence decisions
 
 The current build is intentionally non-sandboxed, so known projects are persisted as standardized absolute paths in `UserDefaults`.
@@ -77,7 +106,8 @@ Not persisted:
 - `.tool-versions` contents.
 - asdf plugin/version state.
 - installed-version lookup results.
-- command output.
+- command/task output.
+- install task state.
 
 If App Sandbox support is introduced later, project access will need security-scoped bookmarks and this section must be updated before changing the persistence format.
 
@@ -93,6 +123,7 @@ Implemented:
 - `asdf version` status.
 - `asdf plugin list --urls` parsing.
 - `asdf list <tool>` installed-version lookup and parser.
+- Typed `asdf install <tool> <version>` operation with streamed output.
 - Overview and Plugins screens.
 - Projects screen with add/remove known folders.
 - Persisted known project paths.
@@ -100,7 +131,8 @@ Implemented:
 - Project state for missing folders or missing `.tool-versions` files.
 - Per-version availability in Projects: Installed, Missing, System, Local path, Plugin missing, or Unknown.
 - Fallback-aware requirement readiness: a requirement is ready when at least one configured fallback is available.
-- Parser, availability-resolution, project snapshot, persistence, command streaming, and command cancellation unit tests.
+- `Install Missing` planning, sequential install task, live log, cancellation, single-task mutual exclusion, and post-success refresh.
+- Parser, availability-resolution, install-planning, project snapshot, persistence, command streaming, and command cancellation unit tests.
 - macOS GitHub Actions CI running `swift test`.
 
 Run locally:
@@ -128,7 +160,7 @@ Xcode can open `Package.swift` directly.
 - [x] Add/remove known project folders.
 - [x] Parse `.tool-versions` without mutating it.
 - [x] Show required vs installed versions.
-- [ ] `Install missing versions` action with task log/cancel UI.
+- [x] `Install missing versions` action with task log/cancel UI.
 - [x] Persist project list.
 
 ### Phase 3 — Version management
@@ -137,7 +169,7 @@ Xcode can open `Package.swift` directly.
 - [ ] Dedicated installed versions browser.
 - [ ] Available versions: `asdf list all <tool>`.
 - [ ] Latest version lookup.
-- [ ] Install/uninstall with task log.
+- [ ] General install/uninstall with task log.
 - [ ] Set project/home versions through `asdf set`.
 - [ ] Show known projects using a version before uninstall.
 
@@ -172,8 +204,6 @@ Current token handling:
 - Missing plugin: reported before version availability because asdf needs the plugin to manage that tool.
 - Lookup failure: status is `Unknown` and the command error is shown in the project UI.
 
-Before implementing `Install missing versions`, decide whether fallback chains should install only the first missing exact/ref version or delegate to `asdf install` in the project directory. Document that decision and add tests before exposing the action.
-
 ## asdf command/reference assumptions
 
 Keep these behaviors aligned with current official asdf documentation before changing related code:
@@ -182,6 +212,7 @@ Keep these behaviors aligned with current official asdf documentation before cha
 - `.tool-versions` supports full-line and inline comments.
 - Version entries may include exact versions, `ref:*`, `path:*`, and `system`.
 - `asdf list <tool>` lists installed versions; asdf 0.18+ exits successfully when no versions are installed.
+- `asdf install <tool> <version>` installs a specific runtime version for an installed plugin.
 - `asdf install` with no tool/version arguments installs the tools defined by the `.tool-versions` file in the command's working directory.
 - `asdf set <tool> <version...>` writes project-local configuration; `asdf set -u` writes the home-level configuration.
 - `.tool-versions` should contain exact versions (plus supported special values such as `system`, `ref:*`, and `path:*`), not a moving `latest` value.
@@ -196,13 +227,15 @@ When asking Codex to modify this repository, include these rules in the prompt:
 2. Preserve the SwiftUI/Foundation-only architecture unless the task explicitly changes it.
 3. Keep asdf CLI calls behind `AsdfService` and process handling behind `AsdfCommandRunner`.
 4. Keep project file reads/writes behind `ProjectService` or a dedicated file service.
-5. Keep availability/status decisions in pure non-UI logic so they can be unit tested.
+5. Keep availability and install-planning decisions in pure non-UI logic so they can be unit tested.
 6. Long-running operations must use the existing streaming/cancellable command runner; do not add another Process wrapper.
-7. Add or update tests for parsers and non-UI logic.
-8. Do not introduce shell-string command execution for normal asdf commands.
-9. Do not silently change `.tool-versions`; mutations need explicit UI intent.
-10. Update this document when architecture, commands, persistence, distribution, or roadmap status changes.
-11. Run `swift test` and report failures before considering a change complete.
+7. Preserve the single-active-install-task rule unless a deliberate concurrency design is documented and tested.
+8. Do not auto-install plugins as a side effect of runtime installation.
+9. Add or update tests for parsers and non-UI logic.
+10. Do not introduce shell-string command execution for normal asdf commands.
+11. Do not silently change `.tool-versions`; mutations need explicit UI intent.
+12. Update this document when architecture, commands, persistence, distribution, task policy, or roadmap status changes.
+13. Run `swift test` and report failures before considering a change complete.
 
 Suggested Codex prompt:
 
@@ -211,9 +244,10 @@ Read docs/DEVELOPMENT.md first and follow its architecture/constraints.
 Implement <task> in small focused changes. Keep CLI construction in AsdfService,
 process execution in AsdfCommandRunner, project file access in ProjectService,
 and UI logic in SwiftUI views/models. Reuse the existing streaming/cancellable
-runner for long operations. Keep status decisions in pure testable logic. Add
-tests for parsing/non-UI behavior. Run swift test. Update DEVELOPMENT.md if this
-changes architecture, supported asdf commands, persistence, or roadmap status.
+runner for long operations and preserve the documented install planning policy.
+Keep status/planning decisions in pure testable logic. Add tests for parsing and
+non-UI behavior. Run swift test. Update DEVELOPMENT.md if this changes architecture,
+supported asdf commands, persistence, task policy, or roadmap status.
 ```
 
 ## Design principles

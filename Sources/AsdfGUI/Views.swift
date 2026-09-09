@@ -98,6 +98,10 @@ struct ProjectsView: View {
                     .font(.callout)
             }
 
+            if let task = model.activeInstallTask {
+                InstallTaskPanel(task: task)
+            }
+
             if model.projectSnapshots.isEmpty {
                 ContentUnavailableView(
                     "No projects",
@@ -116,6 +120,7 @@ struct ProjectsView: View {
             Button("Refresh Projects", systemImage: "arrow.clockwise") {
                 Task { await model.reloadProjects() }
             }
+            .disabled(model.activeInstallTask?.isRunning == true)
         }
         .fileImporter(
             isPresented: $isAddingProject,
@@ -133,11 +138,75 @@ struct ProjectsView: View {
     }
 }
 
+struct InstallTaskPanel: View {
+    @Environment(AppModel.self) private var model
+    let task: ProjectInstallTaskState
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label(task.status.title, systemImage: task.status.symbolName)
+                        .font(.headline)
+                    Spacer()
+                    if task.isRunning {
+                        Button("Cancel", role: .destructive) {
+                            model.cancelInstallTask()
+                        }
+                    } else {
+                        Button("Close") {
+                            model.dismissInstallTask()
+                        }
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(task.project.name).fontWeight(.medium)
+                    Text("•")
+                        .foregroundStyle(.tertiary)
+                    Text("\(task.items.count) planned runtime\(task.items.count == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.callout)
+
+                if let item = task.currentItem {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Installing \(item.tool) \(item.version)…")
+                    }
+                    .font(.callout)
+                }
+
+                if let error = task.errorMessage {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                }
+
+                ScrollView {
+                    Text(task.log)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .frame(minHeight: 110, maxHeight: 190)
+                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
+            }
+        } label: {
+            Text("Install Task")
+        }
+    }
+}
+
 struct ProjectRow: View {
     @Environment(AppModel.self) private var model
     let snapshot: ProjectSnapshot
 
     var body: some View {
+        let installPlan = model.installPlan(for: snapshot)
+
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -154,6 +223,7 @@ struct ProjectRow: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
+                .disabled(model.activeInstallTask?.isRunning == true)
                 .help("Remove from asdf GUI. Files are not deleted.")
             }
 
@@ -171,6 +241,17 @@ struct ProjectRow: View {
                 VStack(alignment: .leading, spacing: 12) {
                     ForEach(snapshot.requirements) { requirement in
                         RequirementRow(requirement: requirement)
+                    }
+
+                    if !installPlan.isEmpty {
+                        HStack {
+                            Spacer()
+                            Button("Install Missing (\(installPlan.count))", systemImage: "arrow.down.circle") {
+                                model.installMissing(for: snapshot)
+                            }
+                            .disabled(model.activeInstallTask?.isRunning == true || model.executableURL == nil)
+                            .help("Install the first missing version for each unsatisfied tool requirement.")
+                        }
                     }
                 }
             }
@@ -217,6 +298,26 @@ struct RequirementRow: View {
                         .textSelection(.enabled)
                 }
             }
+        }
+    }
+}
+
+private extension ProjectInstallTaskStatus {
+    var title: String {
+        switch self {
+        case .running: "Installing runtimes"
+        case .succeeded: "Installation complete"
+        case .failed: "Installation failed"
+        case .cancelled: "Installation cancelled"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .running: "arrow.down.circle"
+        case .succeeded: "checkmark.circle.fill"
+        case .failed: "xmark.circle.fill"
+        case .cancelled: "stop.circle"
         }
     }
 }

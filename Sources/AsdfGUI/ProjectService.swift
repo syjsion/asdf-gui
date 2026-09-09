@@ -18,6 +18,13 @@ struct ToolRequirement: Identifiable, Hashable {
     var id: String { tool }
 }
 
+struct ProjectInstallItem: Identifiable, Hashable {
+    let tool: String
+    let version: String
+
+    var id: String { "\(tool)@\(version)" }
+}
+
 enum RequirementVersionStatus: Hashable {
     case installed
     case missing
@@ -49,6 +56,32 @@ enum RequirementStatusResolver {
         if lookupFailed { return .unknown }
         guard let installedVersions else { return .unknown }
         return installedVersions.contains(version) ? .installed : .missing
+    }
+}
+
+enum ProjectInstallPlanner {
+    static func plan(
+        requirements: [ToolRequirement],
+        status: (String, String) -> RequirementVersionStatus
+    ) -> [ProjectInstallItem] {
+        var seenTools = Set<String>()
+        var items: [ProjectInstallItem] = []
+
+        for requirement in requirements where seenTools.insert(requirement.tool).inserted {
+            let states = requirement.versions.map { version in
+                (version, status(requirement.tool, version))
+            }
+
+            if states.contains(where: { $0.1.isSatisfied }) {
+                continue
+            }
+
+            if let firstInstallable = states.first(where: { $0.1 == .missing }) {
+                items.append(ProjectInstallItem(tool: requirement.tool, version: firstInstallable.0))
+            }
+        }
+
+        return items
     }
 }
 
