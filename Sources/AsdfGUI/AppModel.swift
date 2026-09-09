@@ -7,6 +7,25 @@ struct AsdfPlugin: Identifiable, Hashable {
     let url: String?
 }
 
+enum ProjectInstallTaskStatus: Hashable {
+    case running
+    case succeeded
+    case failed
+    case cancelled
+}
+
+struct ProjectInstallTaskState: Identifiable {
+    let id: UUID
+    let project: ManagedProject
+    let items: [ProjectInstallItem]
+    var status: ProjectInstallTaskStatus
+    var currentItem: ProjectInstallItem?
+    var log: String
+    var errorMessage: String?
+
+    var isRunning: Bool { status == .running }
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -18,6 +37,7 @@ final class AppModel {
     var projectSnapshots: [ProjectSnapshot] = []
     var installedVersionsByTool: [String: [String]] = [:]
     var versionLookupErrors: [String: String] = [:]
+    var activeInstallTask: ProjectInstallTaskState?
     var isLoading = false
     var isRefreshingVersionStatus = false
     var errorMessage: String?
@@ -25,6 +45,8 @@ final class AppModel {
     private let service = AsdfService()
     private let projectService = ProjectService()
     private let preferences = PreferencesStore()
+    private let installLogLimit = 200_000
+    private var installTask: Task<Void, Never>?
 
     init() {
         configuredExecutableURL = preferences.executableURL()
@@ -146,5 +168,124 @@ final class AppModel {
         requirement.versions.contains { version in
             status(for: requirement.tool, version: version).isSatisfied
         }
+    }
+
+    func installPlan(for snapshot: ProjectSnapshot) -> [ProjectInstallItem] {
+        ProjectInstallPlanner.plan(requirements: snapshot.requirements) { tool, version in
+            status(for: tool, version: version)
+        }
+    }
+
+    func installMissing(for snapshot: ProjectSnapshot) {
+        guard activeInstallTask?.isRunning != true, executableURL != nil else { return }
+
+        let items = installPlan(for: snapshot)
+        guard !items.isEmpty else { return }
+
+        let taskID = UUID()
+        activeInstallTask = ProjectInstallTaskState(
+            id: taskID,
+            project: snapshot.project,
+            items: items,
+            status: .running,
+            currentItem: nil,
+            log: "Installing missing runtimes for \(snapshot.project.name)\n",
+            errorMessage: nil
+        )
+
+        installTask = Task { [weak self] in
+            await self?.runInstallTask(id: taskID, project: snapshot.project, items: items)
+        }
+    }
+
+    func cancelInstallTask() {
+        guard let state = activeInstallTask, state.isRunning else { return }
+        appendInstallLog("\nCancelling…\n", taskID: state.id)
+        installTask?.cancel()
+    }
+
+    func dismissInstallTask() {
+        guard activeInstallTask?.isRunning != true else { return }
+        activeInstallTask = nil
+    }
+
+    private func runInstallTask(id: UUID, project: ManagedProject, items: [ProjectInstallItem]) async {
+        guard let executable = executableURL else {
+            finishInstallTask(id: id, status: .failed, error: "asdf executable is not available.")
+            return
+        }
+
+        for item in items {
+            if Task.isCancelled {
+                finishInstallTask(id: id, status: .cancelled, error: nil)
+                return
+            }
+
+            updateInstallTask(id: id) { state in
+                state.currentItem = item
+            }
+            appendInstallLog("\n$ asdf install \(item.tool) \(item.version)\n", taskID: id)
+
+            do {
+                _ = try await service.installVersion(
+                    executable: executable,
+                    tool: item.tool,
+                    version: item.version,
+                    currentDirectory: project.url
+                ) { [weak self] event in
+                    Task { [weak self] in
+                        await self?.appendInstallOutput(event, taskID: id)
+                    }
+                }
+                appendInstallLog("\n✓ Installed \(item.tool) \(item.version)\n", taskID: id)
+            } catch is CancellationError {
+                finishInstallTask(id: id, status: .cancelled, error: nil)
+                return
+            } catch {
+                appendInstallLog("\n✗ \(error.localizedDescription)\n", taskID: id)
+                finishInstallTask(id: id, status: .failed, error: error.localizedDescription)
+                return
+            }
+        }
+
+        finishInstallTask(id: id, status: .succeeded, error: nil)
+        await refreshInstalledVersions()
+    }
+
+    private func appendInstallOutput(_ event: AsdfOutputEvent, taskID: UUID) {
+        appendInstallLog(event.text, taskID: taskID)
+    }
+
+    private func appendInstallLog(_ text: String, taskID: UUID) {
+        updateInstallTask(id: taskID) { state in
+            state.log += text
+            if state.log.count > installLogLimit {
+                let retained = String(state.log.suffix(installLogLimit - 64))
+                state.log = "… older output truncated …\n" + retained
+            }
+        }
+    }
+
+    private func finishInstallTask(id: UUID, status: ProjectInstallTaskStatus, error: String?) {
+        updateInstallTask(id: id) { state in
+            state.status = status
+            state.currentItem = nil
+            state.errorMessage = error
+            switch status {
+            case .succeeded:
+                state.log += "\nAll planned runtimes installed.\n"
+            case .cancelled:
+                state.log += "\nInstallation cancelled.\n"
+            case .failed, .running:
+                break
+            }
+        }
+        installTask = nil
+    }
+
+    private func updateInstallTask(id: UUID, _ update: (inout ProjectInstallTaskState) -> Void) {
+        guard var state = activeInstallTask, state.id == id else { return }
+        update(&state)
+        activeInstallTask = state
     }
 }
