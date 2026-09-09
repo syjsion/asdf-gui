@@ -7,12 +7,6 @@ struct AsdfPlugin: Identifiable, Hashable {
     let url: String?
 }
 
-struct AsdfCommandResult: Sendable {
-    let stdout: String
-    let stderr: String
-    let exitCode: Int32
-}
-
 @MainActor
 @Observable
 final class AppModel {
