@@ -21,9 +21,15 @@ final class VersionSelectionTests: XCTestCase {
             .map(String.init)
         let workingDirectory = try String(contentsOf: fixture.workingDirectory, encoding: .utf8)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedWorkingDirectory = URL(fileURLWithPath: workingDirectory)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
+        let resolvedProject = project
+            .resolvingSymlinksInPath()
+            .standardizedFileURL
 
         XCTAssertEqual(arguments, ["set", "nodejs", "22.18.0"])
-        XCTAssertEqual(workingDirectory, project.path)
+        XCTAssertEqual(resolvedWorkingDirectory.path, resolvedProject.path)
     }
 
     func testSetHomeVersionUsesHomeFlagAndSupportsFallbackArguments() async throws {
