@@ -51,8 +51,12 @@ final class AppModel {
     var isRefreshingVersionStatus = false
     var errorMessage: String?
 
+    private(set) var externalWriteOperationCount = 0
+
     var hasActiveOperation: Bool {
-        activeInstallTask?.isRunning == true || activeVersionOperation?.isRunning == true
+        activeInstallTask?.isRunning == true
+            || activeVersionOperation?.isRunning == true
+            || externalWriteOperationCount > 0
     }
 
     private let service = AsdfService()
@@ -67,6 +71,16 @@ final class AppModel {
         configuredExecutableURL = preferences.executableURL()
         projects = preferences.projects()
         refreshProjects()
+    }
+
+    func beginExternalWriteOperation() -> Bool {
+        guard !hasActiveOperation else { return false }
+        externalWriteOperationCount += 1
+        return true
+    }
+
+    func endExternalWriteOperation() {
+        externalWriteOperationCount = max(0, externalWriteOperationCount - 1)
     }
 
     func refresh() async {
@@ -267,7 +281,6 @@ final class AppModel {
 
     func installMissing(for snapshot: ProjectSnapshot) {
         guard !hasActiveOperation, executableURL != nil else { return }
-
         let items = installPlan(for: snapshot)
         guard !items.isEmpty else { return }
 
@@ -334,9 +347,7 @@ final class AppModel {
                 return
             }
 
-            updateInstallTask(id: id) { state in
-                state.currentItem = item
-            }
+            updateInstallTask(id: id) { $0.currentItem = item }
             appendInstallLog("\n$ asdf install \(item.tool) \(item.version)\n", taskID: id)
 
             do {

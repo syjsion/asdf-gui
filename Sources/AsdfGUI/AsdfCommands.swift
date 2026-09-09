@@ -9,6 +9,18 @@ struct AsdfCommands: Commands {
                 openWindow(id: "version-selection")
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
+
+            Divider()
+
+            Button("Manage Plugins…") {
+                openWindow(id: "plugin-manager")
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+
+            Button("Diagnostics…") {
+                openWindow(id: "diagnostics")
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
         }
     }
 }

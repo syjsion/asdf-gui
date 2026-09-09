@@ -21,6 +21,18 @@ struct AsdfGUIApp: App {
         }
         .defaultSize(width: 620, height: 500)
 
+        Window("Plugin Manager", id: "plugin-manager") {
+            PluginManagerView()
+                .environment(model)
+        }
+        .defaultSize(width: 860, height: 620)
+
+        Window("Diagnostics", id: "diagnostics") {
+            DiagnosticsView()
+                .environment(model)
+        }
+        .defaultSize(width: 820, height: 620)
+
         Settings {
             SettingsView()
                 .environment(model)
