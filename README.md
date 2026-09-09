@@ -34,13 +34,16 @@ You can also open `Package.swift` in Xcode and run the `asdf-gui` executable tar
 - Install an individual available version from the Versions screen with a live cancellable task log.
 - Uninstall an installed version only after an explicit destructive confirmation.
 - Before uninstalling, show every managed project whose `.tool-versions` explicitly references that tool/version.
-- Keep project install tasks and general version operations mutually exclusive so only one asdf write task runs at a time.
-- Refresh project/runtime availability immediately after successful install or uninstall operations.
+- Set an exact installed version (or `system`) for a managed project through `asdf set`, with the current project setting and replacement impact shown before writing.
+- Set an exact Home default through `asdf set -u`; project-local `.tool-versions` files continue to override it.
+- Open the native version-selection window from **Set Runtime Version…** in the app menu (⌘⇧V).
+- Keep project install tasks and general version operations mutually exclusive so only one long-running asdf write task runs at a time.
+- Refresh project/runtime availability immediately after successful install, uninstall, or project version-selection operations.
 - Persist known project paths without copying project configuration, runtime state, version-browser results, or task logs into app storage.
 - Native SwiftUI sidebar with Overview, Projects, Versions and Plugins screens.
-- Unit tests for process streaming/cancellation, asdf/plugin output, version catalog merging, project usage checks, `.tool-versions`, install planning, availability decisions, project snapshots and preferences.
+- Unit tests for process streaming/cancellation, asdf/plugin output, version selection commands, version catalog merging, project usage checks, `.tool-versions`, install planning, availability decisions, project snapshots and preferences.
 - macOS GitHub Actions CI running `swift test`.
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability/install semantics, version-management safety rules, command assumptions and a reusable Codex prompt.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It contains the roadmap, architecture boundaries, persistence decisions, project availability/install semantics, version-management safety rules, version-selection behavior, command assumptions and a reusable Codex prompt.
