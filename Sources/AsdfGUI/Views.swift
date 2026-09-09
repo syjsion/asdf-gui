@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
@@ -13,6 +14,7 @@ struct ContentView: View {
         } detail: {
             switch selection ?? .overview {
             case .overview: OverviewView()
+            case .projects: ProjectsView()
             case .plugins: PluginsView()
             }
         }
@@ -21,10 +23,18 @@ struct ContentView: View {
 }
 
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case overview, plugins
+    case overview, projects, plugins
+
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
-    var icon: String { self == .overview ? "gauge.with.dots.needle.67percent" : "shippingbox" }
+
+    var icon: String {
+        switch self {
+        case .overview: "gauge.with.dots.needle.67percent"
+        case .projects: "folder"
+        case .plugins: "shippingbox"
+        }
+    }
 }
 
 struct OverviewView: View {
@@ -48,6 +58,8 @@ struct OverviewView: View {
                     LabeledContent("Executable", value: model.executableURL?.path ?? "Not found")
                     Divider()
                     LabeledContent("Plugins", value: "\(model.plugins.count)")
+                    Divider()
+                    LabeledContent("Managed projects", value: "\(model.projects.count)")
                 }
 
                 if let error = model.errorMessage {
@@ -57,6 +69,113 @@ struct OverviewView: View {
             .padding(28)
         }
         .overlay { if model.isLoading { ProgressView().controlSize(.large) } }
+    }
+}
+
+struct ProjectsView: View {
+    @Environment(AppModel.self) private var model
+    @State private var isAddingProject = false
+    @State private var importerError: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Projects").font(.largeTitle.bold())
+                    Text("Read-only view of each project's .tool-versions requirements.")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Add Project", systemImage: "plus") { isAddingProject = true }
+            }
+
+            if let importerError {
+                Text(importerError)
+                    .foregroundStyle(.red)
+                    .font(.callout)
+            }
+
+            if model.projectSnapshots.isEmpty {
+                ContentUnavailableView(
+                    "No projects",
+                    systemImage: "folder.badge.plus",
+                    description: Text("Add project folders to inspect their .tool-versions files.")
+                )
+            } else {
+                List(model.projectSnapshots) { snapshot in
+                    ProjectRow(snapshot: snapshot)
+                }
+                .listStyle(.inset)
+            }
+        }
+        .padding(28)
+        .toolbar {
+            Button("Refresh Projects", systemImage: "arrow.clockwise") { model.refreshProjects() }
+        }
+        .fileImporter(
+            isPresented: $isAddingProject,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                importerError = nil
+                model.addProjects(urls)
+            case .failure(let error):
+                importerError = error.localizedDescription
+            }
+        }
+    }
+}
+
+struct ProjectRow: View {
+    @Environment(AppModel.self) private var model
+    let snapshot: ProjectSnapshot
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(snapshot.project.name).font(.headline)
+                    Text(snapshot.project.path)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                Spacer()
+                Button(role: .destructive) {
+                    model.removeProject(snapshot.project)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .help("Remove from asdf GUI. Files are not deleted.")
+            }
+
+            if let error = snapshot.errorMessage {
+                Label(error, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .font(.callout)
+            } else if !snapshot.hasToolVersionsFile {
+                Label("No .tool-versions in this folder", systemImage: "doc.badge.ellipsis")
+                    .foregroundStyle(.secondary)
+            } else if snapshot.requirements.isEmpty {
+                Text(".tool-versions contains no tool entries.")
+                    .foregroundStyle(.secondary)
+            } else {
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {
+                    ForEach(snapshot.requirements) { requirement in
+                        GridRow {
+                            Text(requirement.tool).fontWeight(.medium)
+                            Text(requirement.versions.joined(separator: "  →  "))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 8)
     }
 }
 
@@ -82,16 +201,50 @@ struct PluginsView: View {
 
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
+    @State private var isChoosingExecutable = false
+    @State private var importerError: String?
 
     var body: some View {
         Form {
             Section("asdf executable") {
-                LabeledContent("Detected path", value: model.executableURL?.path ?? "Not detected")
-                Text("MVP auto-detects common Homebrew, local-bin and Go install locations. Manual executable selection is planned next.")
-                    .font(.caption).foregroundStyle(.secondary)
+                LabeledContent("Active path", value: model.executableURL?.path ?? "Not detected")
+                LabeledContent("Selection", value: model.configuredExecutableURL == nil ? "Automatic" : "Custom")
+
+                HStack {
+                    Button("Choose asdf…") { isChoosingExecutable = true }
+                    Button("Use Automatic Detection") {
+                        Task { await model.resetExecutablePreference() }
+                    }
+                    .disabled(model.configuredExecutableURL == nil)
+                }
+
+                if let importerError {
+                    Text(importerError).foregroundStyle(.red).font(.caption)
+                }
+                if let error = model.errorMessage {
+                    Text(error).foregroundStyle(.red).font(.caption)
+                }
+
+                Text("The selected file must be executable. Automatic detection checks common Homebrew, ~/.local/bin, and ~/go/bin locations.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
-        .frame(width: 520, height: 220)
+        .frame(width: 620, height: 280)
+        .fileImporter(
+            isPresented: $isChoosingExecutable,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                importerError = nil
+                Task { await model.setExecutable(url) }
+            case .failure(let error):
+                importerError = error.localizedDescription
+            }
+        }
     }
 }
