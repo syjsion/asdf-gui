@@ -27,6 +27,11 @@ struct AsdfCommands: Commands {
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
 
+            Button(language.localized("asdf Configuration…")) {
+                openWindow(id: "asdf-configuration")
+            }
+            .keyboardShortcut(",", modifiers: [.command, .option])
+
             Divider()
 
             Button(language.localized("Manage Plugins…")) {
