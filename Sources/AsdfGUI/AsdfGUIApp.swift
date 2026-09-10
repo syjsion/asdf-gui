@@ -64,6 +64,14 @@ struct AsdfGUIApp: App {
         }
         .defaultSize(width: 760, height: 610)
 
+        Window("asdf Configuration", id: "asdf-configuration") {
+            AsdfConfigurationView()
+                .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
+        }
+        .defaultSize(width: 760, height: 680)
+
         Window("About asdf GUI", id: "about") {
             AboutView()
                 .environment(model)
