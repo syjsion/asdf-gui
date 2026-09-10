@@ -56,6 +56,37 @@ private final class ProcessCancellationController: @unchecked Sendable {
     }
 }
 
+private final class ProcessTerminationWaiter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var status: Int32?
+    private var continuation: CheckedContinuation<Int32, Never>?
+
+    func signal(_ status: Int32) {
+        lock.lock()
+        if let continuation {
+            self.continuation = nil
+            lock.unlock()
+            continuation.resume(returning: status)
+        } else {
+            self.status = status
+            lock.unlock()
+        }
+    }
+
+    func wait() async -> Int32 {
+        await withCheckedContinuation { continuation in
+            lock.lock()
+            if let status {
+                lock.unlock()
+                continuation.resume(returning: status)
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+    }
+}
+
 private final class OutputAccumulator: @unchecked Sendable {
     private let lock = NSLock()
     private var stdout = Data()
@@ -99,62 +130,57 @@ struct AsdfCommandRunner {
         let result = try await withTaskCancellationHandler(operation: {
             try Task.checkCancellation()
 
-            return try await withCheckedThrowingContinuation {
-                (continuation: CheckedContinuation<AsdfCommandResult, Error>) in
-                let process = Process()
-                let stdoutPipe = Pipe()
-                let stderrPipe = Pipe()
-                let accumulator = OutputAccumulator()
-                let stdoutHandle = stdoutPipe.fileHandleForReading
-                let stderrHandle = stderrPipe.fileHandleForReading
+            let process = Process()
+            let stdoutPipe = Pipe()
+            let stderrPipe = Pipe()
+            let accumulator = OutputAccumulator()
+            let terminationWaiter = ProcessTerminationWaiter()
 
-                process.executableURL = executable
-                process.arguments = arguments
-                process.currentDirectoryURL = currentDirectory
-                process.standardOutput = stdoutPipe
-                process.standardError = stderrPipe
-
-                configureReadHandler(
-                    stdoutHandle,
-                    stream: .stdout,
-                    accumulator: accumulator,
-                    onOutput: onOutput
-                )
-                configureReadHandler(
-                    stderrHandle,
-                    stream: .stderr,
-                    accumulator: accumulator,
-                    onOutput: onOutput
-                )
-
-                cancellationController.attach(process)
-
-                process.terminationHandler = { process in
-                    stdoutHandle.readabilityHandler = nil
-                    stderrHandle.readabilityHandler = nil
-
-                    let stdoutRemainder = stdoutHandle.readDataToEndOfFile()
-                    let stderrRemainder = stderrHandle.readDataToEndOfFile()
-                    accumulator.append(stdoutRemainder, stream: .stdout)
-                    accumulator.append(stderrRemainder, stream: .stderr)
-                    emit(stdoutRemainder, stream: .stdout, onOutput: onOutput)
-                    emit(stderrRemainder, stream: .stderr, onOutput: onOutput)
-
-                    cancellationController.detach()
-                    continuation.resume(returning: accumulator.result(exitCode: process.terminationStatus))
-                }
-
-                do {
-                    try process.run()
-                    cancellationController.terminateIfCancelled()
-                } catch {
-                    stdoutHandle.readabilityHandler = nil
-                    stderrHandle.readabilityHandler = nil
-                    process.terminationHandler = nil
-                    cancellationController.detach()
-                    continuation.resume(throwing: error)
-                }
+            process.executableURL = executable
+            process.arguments = arguments
+            process.currentDirectoryURL = currentDirectory
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+            process.terminationHandler = { process in
+                terminationWaiter.signal(process.terminationStatus)
             }
+
+            cancellationController.attach(process)
+
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                cancellationController.detach()
+                throw error
+            }
+
+            cancellationController.terminateIfCancelled()
+
+            async let stdoutDrain: Void = drain(
+                stdoutPipe.fileHandleForReading,
+                stream: .stdout,
+                accumulator: accumulator,
+                onOutput: onOutput
+            )
+            async let stderrDrain: Void = drain(
+                stderrPipe.fileHandleForReading,
+                stream: .stderr,
+                accumulator: accumulator,
+                onOutput: onOutput
+            )
+
+            let exitCode = await terminationWaiter.wait()
+
+            do {
+                _ = try await (stdoutDrain, stderrDrain)
+            } catch {
+                cancellationController.detach()
+                throw error
+            }
+
+            cancellationController.detach()
+            return accumulator.result(exitCode: exitCode)
         }, onCancel: {
             cancellationController.cancel()
         })
@@ -163,21 +189,27 @@ struct AsdfCommandRunner {
         return result
     }
 
-    private func configureReadHandler(
+    private func drain(
         _ handle: FileHandle,
         stream: AsdfOutputStream,
         accumulator: OutputAccumulator,
         onOutput: @escaping @Sendable (AsdfOutputEvent) -> Void
-    ) {
-        handle.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty else {
-                handle.readabilityHandler = nil
-                return
+    ) async throws {
+        try await withCheckedThrowingContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                do {
+                    while true {
+                        guard let data = try handle.read(upToCount: 64 * 1024), !data.isEmpty else {
+                            break
+                        }
+                        accumulator.append(data, stream: stream)
+                        emit(data, stream: stream, onOutput: onOutput)
+                    }
+                    continuation.resume(returning: ())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
             }
-
-            accumulator.append(data, stream: stream)
-            emit(data, stream: stream, onOutput: onOutput)
         }
     }
 }
