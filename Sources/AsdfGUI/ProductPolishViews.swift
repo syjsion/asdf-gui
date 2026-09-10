@@ -8,7 +8,7 @@ private enum ProjectSortOrder: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: LocalizedStringKey {
+    var titleKey: String {
         switch self {
         case .name: "Name"
         case .path: "Path"
@@ -20,10 +20,15 @@ private enum ProjectSortOrder: String, CaseIterable, Identifiable {
 @MainActor
 struct ProjectsPolishedView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var isAddingProject = false
     @State private var importerError: String?
     @State private var searchText = ""
     @State private var sortOrder: ProjectSortOrder = .name
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     private var displayedSnapshots: [ProjectSnapshot] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -63,13 +68,17 @@ struct ProjectsPolishedView: View {
                     ProgressView().controlSize(.small)
                 }
                 Menu {
-                    Picker("Sort projects", selection: $sortOrder) {
+                    Picker(language.localized("Sort projects"), selection: $sortOrder) {
                         ForEach(ProjectSortOrder.allCases) { order in
-                            Text(order.title).tag(order)
+                            Text(language.localized(order.titleKey)).tag(order)
                         }
                     }
                 } label: {
-                    Label("Sort", systemImage: "arrow.up.arrow.down")
+                    Label {
+                        Text(language.localized("Sort"))
+                    } icon: {
+                        Image(systemName: "arrow.up.arrow.down")
+                    }
                 }
                 Button("Add Project", systemImage: "plus") {
                     isAddingProject = true
@@ -109,7 +118,7 @@ struct ProjectsPolishedView: View {
             }
         }
         .padding(28)
-        .searchable(text: $searchText, prompt: "Search projects, paths, or tools")
+        .searchable(text: $searchText, prompt: language.localized("Search projects, paths, or tools"))
         .toolbar {
             Button("Refresh Projects", systemImage: "arrow.clockwise") {
                 Task { await model.reloadProjects() }
