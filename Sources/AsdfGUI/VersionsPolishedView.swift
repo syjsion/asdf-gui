@@ -18,6 +18,7 @@ struct VersionsPolishedView: View {
     @State private var selectedTool: String?
     @State private var searchText = ""
     @State private var scope: VersionListScope = .all
+    @State private var isShowingUpdateCenter = false
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
 
     private var language: AppLanguage {
@@ -37,6 +38,10 @@ struct VersionsPolishedView: View {
                 if model.isLoadingVersionBrowser {
                     ProgressView().controlSize(.small)
                 }
+                Button(language.localized("Update Center"), systemImage: "arrow.up.circle") {
+                    isShowingUpdateCenter = true
+                }
+                .disabled(model.plugins.isEmpty || model.hasActiveOperation)
                 Button("Refresh", systemImage: "arrow.clockwise") {
                     guard let selectedTool else { return }
                     Task { await model.loadVersionBrowser(tool: selectedTool) }
@@ -100,6 +105,9 @@ struct VersionsPolishedView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 200)
             }
+        }
+        .sheet(isPresented: $isShowingUpdateCenter) {
+            RuntimeUpdateCenterView()
         }
         .onAppear {
             if selectedTool == nil {
