@@ -74,12 +74,15 @@ SIGN_IDENTITY=- \
 - One-time Getting Started guide for fresh installations, reopenable from the app menu.
 - Overview of asdf version, executable, plugins, and managed projects.
 - Card-based Projects page that keeps project headers, paths, tool requirements, fallback states, and actions visually separated.
-- Add/remove managed project folders and read `.tool-versions` without duplicating configuration into app storage.
+- Add/remove managed project folders and reread `.tool-versions` from disk instead of caching project configuration.
+- **Visual `.tool-versions` management per project:** add a tool, edit its version/fallback chain, reorder fallbacks, and remove a tool without exposing a raw text editor.
+- Add/edit/reorder writes run `asdf set <tool> <version...>` in the selected project directory, so asdf remains responsible for normal configuration writes.
+- Because asdf 0.20 has no command that deletes one tool entry, removal is the single documented direct-file exception: it deletes exactly the matching tool line, preserves unrelated lines/comments and POSIX permissions, refuses duplicate entries, and aborts if that tool changed since the UI snapshot.
 - Preserve comments and ordered fallback chains when interpreting `.tool-versions`.
 - Compare project requirements with installed asdf runtimes and show Installed, Missing, System, Local path, Plugin missing, or Unknown state.
 - Install missing project runtimes with live stdout/stderr, cancellation, deterministic fallback planning, and post-success refresh.
 - Browse installed/latest/available versions per plugin with search and Installed-only filtering.
-- **Installed runtime versions are always listed before the full available catalog.**
+- **Installed runtime versions are always listed before the full available catalog**, including inside the project `.tool-versions` editor.
 - Install or uninstall individual runtime versions; uninstall always requires confirmation and shows managed-project usage impact.
 - Set a project version through `asdf set` or a Home default through `asdf set -u`, with explicit configuration-impact confirmation.
 - **Plugin Manager** window (`⌘⇧P`) for Add, Update, Update All, and Remove.
@@ -111,4 +114,4 @@ The latter exists so tools that can create branches but not Git tags can still t
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, localization, update checking, bootstrap/shell-integration policy, release modes, roadmap status, and the Codex working agreement.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, `.tool-versions` mutation rules, destructive-action policies, project/version/plugin semantics, localization, update checking, bootstrap/shell-integration policy, release modes, roadmap status, and the Codex working agreement.
