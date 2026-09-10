@@ -7,6 +7,7 @@ enum ProjectToolVersionsError: LocalizedError {
     case toolNotFound(String)
     case duplicateToolEntries(String)
     case configurationChanged(String)
+    case invalidTool(String)
     case invalidVersion(String)
 
     var errorDescription: String? {
@@ -23,6 +24,8 @@ enum ProjectToolVersionsError: LocalizedError {
             return ".tool-versions contains more than one \(tool) entry. Resolve the duplicate entries before removing this tool from asdf GUI."
         case .configurationChanged(let tool):
             return "The \(tool) entry changed after this view was loaded. Refresh the project before removing it."
+        case .invalidTool(let value):
+            return "Invalid tool name: \(value). Tool names cannot be empty or contain whitespace."
         case .invalidVersion(let value):
             return "Invalid version value: \(value). Version entries cannot be empty or contain whitespace."
         }
@@ -105,6 +108,15 @@ struct ToolVersionsMutationService {
         return mutable as String
     }
 
+    static func validateTool(_ raw: String) throws -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty,
+              value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            throw ProjectToolVersionsError.invalidTool(raw)
+        }
+        return value
+    }
+
     static func validateVersions(_ versions: [String]) throws -> [String] {
         guard !versions.isEmpty else {
             throw ProjectToolVersionsError.invalidVersion("")
@@ -140,12 +152,13 @@ struct ToolVersionsMutationService {
 extension AppModel {
     func loadProjectToolVersionCatalog(tool: String) async throws -> ProjectToolVersionCatalog {
         guard let executableURL else { throw ProjectToolVersionsError.executableUnavailable }
+        let validatedTool = try ToolVersionsMutationService.validateTool(tool)
 
-        let installed = try await AsdfService().installedVersions(executable: executableURL, tool: tool)
-        let available = try await AsdfService().availableVersions(executable: executableURL, tool: tool)
-        let latest = try? await AsdfService().latestVersion(executable: executableURL, tool: tool)
+        let installed = try await AsdfService().installedVersions(executable: executableURL, tool: validatedTool)
+        let available = try await AsdfService().availableVersions(executable: executableURL, tool: validatedTool)
+        let latest = try? await AsdfService().latestVersion(executable: executableURL, tool: validatedTool)
 
-        installedVersionsByTool[tool] = installed
+        installedVersionsByTool[validatedTool] = installed
         return ProjectToolVersionCatalog(installed: installed, available: available, latest: latest)
     }
 
@@ -158,11 +171,12 @@ extension AppModel {
         guard beginExternalWriteOperation() else { throw ProjectToolVersionsError.operationInProgress }
         defer { endExternalWriteOperation() }
 
-        let validated = try ToolVersionsMutationService.validateVersions(versions)
+        let validatedTool = try ToolVersionsMutationService.validateTool(tool)
+        let validatedVersions = try ToolVersionsMutationService.validateVersions(versions)
         _ = try await AsdfService().setVersion(
             executable: executableURL,
-            tool: tool,
-            versions: validated,
+            tool: validatedTool,
+            versions: validatedVersions,
             scope: .project(project.url)
         )
 
@@ -178,9 +192,10 @@ extension AppModel {
         guard beginExternalWriteOperation() else { throw ProjectToolVersionsError.operationInProgress }
         defer { endExternalWriteOperation() }
 
+        let validatedTool = try ToolVersionsMutationService.validateTool(tool)
         try ToolVersionsMutationService().removeTool(
             project: project,
-            tool: tool,
+            tool: validatedTool,
             expectedVersions: expectedVersions
         )
         refreshProjects()
