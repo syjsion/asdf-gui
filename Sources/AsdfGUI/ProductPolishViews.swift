@@ -13,7 +13,7 @@ struct ProjectsPolishedView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Projects")
                         .font(.largeTitle.bold())
-                    Text("Compare each project's .tool-versions with runtimes installed by asdf.")
+                    Text("Inspect and manage each project's .tool-versions with asdf-backed actions.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -81,6 +81,7 @@ struct ProjectsPolishedView: View {
 private struct ProjectCard: View {
     @Environment(AppModel.self) private var model
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
+    @State private var isManagingToolVersions = false
     let snapshot: ProjectSnapshot
 
     private var language: AppLanguage {
@@ -110,20 +111,30 @@ private struct ProjectCard: View {
 
                     Spacer(minLength: 16)
 
-                    Button(role: .destructive) {
-                        model.removeProject(snapshot.project)
-                    } label: {
-                        Label("Remove", systemImage: "trash")
+                    HStack(spacing: 10) {
+                        Button("Manage .tool-versions", systemImage: "slider.horizontal.3") {
+                            isManagingToolVersions = true
+                        }
+                        .disabled(model.hasActiveOperation)
+
+                        Button(role: .destructive) {
+                            model.removeProject(snapshot.project)
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(model.hasActiveOperation)
+                        .help("Remove from asdf GUI. Files are not deleted.")
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(model.hasActiveOperation)
-                    .help("Remove from asdf GUI. Files are not deleted.")
                 }
 
                 Divider()
                 projectContents(installPlan: installPlan)
             }
             .padding(4)
+        }
+        .sheet(isPresented: $isManagingToolVersions) {
+            ProjectToolVersionsManagerView(project: snapshot.project)
         }
     }
 
