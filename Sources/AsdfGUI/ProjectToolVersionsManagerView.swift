@@ -46,7 +46,6 @@ struct ProjectToolVersionsManagerView: View {
                 }
 
                 Spacer()
-
                 Button("Close") { dismiss() }
             }
 
@@ -70,21 +69,21 @@ struct ProjectToolVersionsManagerView: View {
 
             if let snapshot {
                 if let snapshotError = snapshot.errorMessage {
-                    ContentUnavailableView(
-                        "Project configuration unavailable",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text(snapshotError)
-                    )
+                    ContentUnavailableView {
+                        Label(language.localized("Project configuration unavailable"), systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(snapshotError)
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     configurationContent(snapshot)
                 }
             } else {
-                ContentUnavailableView(
-                    "Project unavailable",
-                    systemImage: "folder.badge.questionmark",
-                    description: Text("The project is no longer in the managed-project list.")
-                )
+                ContentUnavailableView {
+                    Label(language.localized("Project unavailable"), systemImage: "folder.badge.questionmark")
+                } description: {
+                    Text(language.localized("The project is no longer in the managed-project list."))
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
@@ -120,9 +119,13 @@ struct ProjectToolVersionsManagerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Configured tools")
                         .font(.title3.bold())
-                    Text(snapshot.hasToolVersionsFile ? ".tool-versions" : "The file will be created by asdf when you add the first tool.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(
+                        snapshot.hasToolVersionsFile
+                            ? ".tool-versions"
+                            : language.localized("The file will be created by asdf when you add the first tool.")
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if isRemoving {
@@ -137,11 +140,14 @@ struct ProjectToolVersionsManagerView: View {
             }
 
             if snapshot.requirements.isEmpty {
-                ContentUnavailableView(
-                    snapshot.hasToolVersionsFile ? "No tool entries" : "No .tool-versions yet",
-                    systemImage: "doc.badge.plus",
-                    description: Text("Add a tool and choose one or more versions. asdf GUI will write the configuration through asdf set.")
-                )
+                ContentUnavailableView {
+                    Label(
+                        language.localized(snapshot.hasToolVersionsFile ? "No tool entries" : "No .tool-versions yet"),
+                        systemImage: "doc.badge.plus"
+                    )
+                } description: {
+                    Text(language.localized("Add a tool and choose one or more versions. asdf GUI will write the configuration through asdf set."))
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -192,9 +198,11 @@ struct ProjectToolVersionsManagerView: View {
                     }
                     .disabled(model.hasActiveOperation || isRemoving)
 
-                    Button("Remove", systemImage: "trash", role: .destructive) {
+                    Button(role: .destructive) {
                         pendingRemoval = requirement
                         isShowingRemovalConfirmation = true
+                    } label: {
+                        Label("Remove", systemImage: "trash")
                     }
                     .disabled(model.hasActiveOperation || isRemoving)
                 }
@@ -308,7 +316,7 @@ private struct ProjectToolVersionsEditorView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(existingRequirement == nil ? "Add tool configuration" : "Edit tool configuration")
+                    Text(language.localized(existingRequirement == nil ? "Add tool configuration" : "Edit tool configuration"))
                         .font(.title.bold())
                     Text(project.name)
                         .foregroundStyle(.secondary)
@@ -398,12 +406,9 @@ private struct ProjectToolVersionsEditorView: View {
                     Divider()
 
                     HStack {
-                        TextField(
-                            "Exact version, system, ref:…, or path:…",
-                            text: $manualVersion
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { addManualVersion() }
+                        TextField("Exact version, system, ref:…, or path:…", text: $manualVersion)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { addManualVersion() }
 
                         Button("Add Version", systemImage: "plus") {
                             addManualVersion()
@@ -468,9 +473,15 @@ private struct ProjectToolVersionsEditorView: View {
                         .frame(minHeight: 120, maxHeight: 210)
 
                         if filteredRecords.isEmpty {
-                            Text(searchText.isEmpty ? "All catalog versions are already in the fallback chain." : "No versions match this filter.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            Text(
+                                language.localized(
+                                    searchText.isEmpty
+                                        ? "All catalog versions are already in the fallback chain."
+                                        : "No versions match this filter."
+                                )
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
