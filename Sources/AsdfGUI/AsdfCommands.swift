@@ -2,33 +2,44 @@ import SwiftUI
 
 struct AsdfCommands: Commands {
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button(language.localized("About asdf GUI…")) {
+                openWindow(id: "about")
+            }
+        }
+
         CommandGroup(after: .appSettings) {
-            Button("Getting Started…") {
+            Button(language.localized("Getting Started…")) {
                 openWindow(id: "getting-started")
             }
 
             Divider()
 
-            Button("Set Runtime Version…") {
+            Button(language.localized("Set Runtime Version…")) {
                 openWindow(id: "version-selection")
             }
             .keyboardShortcut("v", modifiers: [.command, .shift])
 
             Divider()
 
-            Button("Manage Plugins…") {
+            Button(language.localized("Manage Plugins…")) {
                 openWindow(id: "plugin-manager")
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
 
-            Button("Diagnostics…") {
+            Button(language.localized("Diagnostics…")) {
                 openWindow(id: "diagnostics")
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
 
-            Button("Shell Integration…") {
+            Button(language.localized("Shell Integration…")) {
                 openWindow(id: "shell-integration")
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
