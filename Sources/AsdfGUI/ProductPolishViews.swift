@@ -192,7 +192,7 @@ private struct ProjectRequirementLine: View {
                     .textSelection(.enabled)
             } icon: {
                 Image(systemName: model.isRequirementSatisfied(requirement) ? "checkmark.circle.fill" : "exclamationmark.circle")
-                    .foregroundStyle(model.isRequirementSatisfied(requirement) ? .secondary : .orange)
+                    .foregroundStyle(requirementStyle)
             }
             .frame(minWidth: 120, idealWidth: 150, maxWidth: 180, alignment: .leading)
 
@@ -202,13 +202,13 @@ private struct ProjectRequirementLine: View {
                     HStack(spacing: 8) {
                         Image(systemName: statusSymbol(status))
                             .frame(width: 16)
-                            .foregroundStyle(statusNeedsAttention(status) ? .red : .secondary)
+                            .foregroundStyle(statusStyle(status))
                         Text(version)
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                         Text(language.localized(statusTitle(status)))
                             .font(.caption)
-                            .foregroundStyle(statusNeedsAttention(status) ? .red : .secondary)
+                            .foregroundStyle(statusStyle(status))
                         if index < requirement.versions.count - 1 {
                             Text("fallback")
                                 .font(.caption2)
@@ -226,6 +226,12 @@ private struct ProjectRequirementLine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var requirementStyle: AnyShapeStyle {
+        model.isRequirementSatisfied(requirement)
+            ? AnyShapeStyle(.secondary)
+            : AnyShapeStyle(Color.orange)
     }
 
     private func statusTitle(_ status: RequirementVersionStatus) -> String {
@@ -248,6 +254,12 @@ private struct ProjectRequirementLine: View {
         case .pluginMissing: "shippingbox.and.arrow.backward"
         case .unknown: "questionmark.circle"
         }
+    }
+
+    private func statusStyle(_ status: RequirementVersionStatus) -> AnyShapeStyle {
+        statusNeedsAttention(status)
+            ? AnyShapeStyle(Color.red)
+            : AnyShapeStyle(.secondary)
     }
 
     private func statusNeedsAttention(_ status: RequirementVersionStatus) -> Bool {
