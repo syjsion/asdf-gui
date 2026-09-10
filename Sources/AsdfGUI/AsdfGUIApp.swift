@@ -13,7 +13,7 @@ struct AsdfGUIApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ApplicationRootView()
+            LocalizedAppRootView()
                 .environment(model)
                 .environment(bootstrapModel)
                 .environment(\.locale, language.locale)
