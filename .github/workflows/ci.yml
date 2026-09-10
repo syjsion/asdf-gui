@@ -7,10 +7,28 @@ on:
 
 jobs:
   test:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Swift version
         run: swift --version
       - name: Test
         run: swift test
+
+  package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ad-hoc signed app bundle
+        env:
+          VERSION: 0.0.0-ci
+          BUILD_NUMBER: ${{ github.run_number }}
+          OUTPUT_DIR: ${{ github.workspace }}/dist
+          SIGN_IDENTITY: '-'
+        run: bash scripts/build-app.sh
+      - name: Create DMG
+        env:
+          SIGN_IDENTITY: '-'
+        run: bash scripts/create-dmg.sh "dist/asdf GUI.app" "dist/asdf-gui-0.0.0-ci-macos-arm64.dmg"
+      - name: Verify app and DMG
+        run: bash scripts/verify-package.sh "dist/asdf GUI.app" "dist/asdf-gui-0.0.0-ci-macos-arm64.dmg"

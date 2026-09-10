@@ -10,12 +10,12 @@ This is the handoff/reference for future development, especially when using Code
 
 - macOS only for now.
 - Swift + SwiftUI + Foundation/AppKit where needed. Do not introduce React, Electron, Tauri, or WebView.
-- Prefer Apple frameworks and zero third-party dependencies unless a dependency clearly reduces maintenance risk.
+- Prefer Apple frameworks and zero third-party runtime dependencies unless a dependency clearly reduces maintenance risk.
 - Keep CLI construction/parsing out of SwiftUI views.
 - Run normal asdf commands with `Process.executableURL` + argument arrays; do not construct `/bin/zsh -c` command strings.
 - Destructive operations must show known impact and require explicit confirmation.
 - Only one asdf write operation may run application-wide at a time.
-- The current distribution model is non-App-Sandbox; Developer ID + notarized DMG is the intended release path.
+- Distribution is outside the Mac App Store: non-App-Sandbox + Developer ID + Hardened Runtime + Apple notarization + DMG.
 - Do not persist copies of `.tool-versions`, plugin/runtime state, version catalogs, task logs, or diagnostic output.
 
 ## Architecture
@@ -36,6 +36,20 @@ SwiftUI Views / feature windows
       -> DiagnosticReportBuilder
       -> PreferencesStore
           -> UserDefaults
+
+Distribution
+  -> SwiftPM release executable
+      -> scripts/build-app.sh
+          -> .app bundle + Info.plist + generated AppIcon.icns
+          -> ad-hoc signature in CI OR Developer ID + Hardened Runtime
+      -> scripts/create-dmg.sh
+          -> compressed DMG + Applications shortcut
+      -> scripts/notarize.sh
+          -> notarytool + stapler
+      -> .github/workflows/release.yml
+          -> arm64 + x86_64 DMGs
+          -> SHA256SUMS.txt
+          -> GitHub Release
 ```
 
 ### Responsibilities
@@ -48,6 +62,10 @@ SwiftUI Views / feature windows
 - `AsdfCommandRunner`: process execution, stdout/stderr draining, streaming, result collection, and cancellation only.
 - `ProjectService`: reads project configuration from disk; it does not mutate `.tool-versions` directly.
 - Pure helpers (`ToolVersionsParser`, planners, inspectors, report builder): deterministic logic suitable for unit tests.
+- `scripts/build-app.sh`: the single source of truth for turning the SwiftPM release executable into the distributable `.app` structure. Do not create a second packaging path in CI.
+- `scripts/create-dmg.sh`: the single DMG assembly path for local verification and releases.
+- `scripts/notarize.sh`: the single command-line notarization/stapling helper.
+- `docs/RELEASING.md`: operational signing/notarization/release runbook; keep it synchronized with release scripts/workflows.
 
 ## Command runner contract
 
@@ -181,6 +199,76 @@ Not persisted:
 
 If App Sandbox support is introduced later, managed project paths must migrate to security-scoped bookmarks before enabling the sandbox.
 
+## Distribution contract
+
+The distribution path deliberately stays SwiftPM-based. Do **not** introduce an Xcode project solely for bundling/signing unless a future feature requires Xcode-managed capabilities or build settings that the current scripts cannot maintain cleanly.
+
+### App bundle
+
+`packaging/Info.plist` contains stable app metadata. `scripts/build-app.sh` copies the SwiftPM release executable into:
+
+```text
+asdf GUI.app/
+  Contents/
+    Info.plist
+    MacOS/asdf-gui
+    Resources/AppIcon.icns
+```
+
+Release metadata:
+
+- bundle identifier: `io.github.syjsion.asdf-gui`;
+- display name: `asdf GUI`;
+- deployment target: macOS 14.0;
+- `CFBundleShortVersionString`: release tag version without the leading `v`;
+- `CFBundleVersion`: CI run number (or explicit local `BUILD_NUMBER`).
+
+`AppIcon.icns` is generated reproducibly from `scripts/generate-app-icon.py`; generated PNG/ICNS files are build outputs and are not committed.
+
+### Signing and sandbox policy
+
+- Public releases use a **Developer ID Application** certificate.
+- Public app signatures must use Hardened Runtime and a secure timestamp.
+- `packaging/asdf-gui.entitlements` is intentionally empty.
+- Do not add `com.apple.security.app-sandbox`; the app must continue to launch the user's local `asdf` binary and work with selected project folders under the current architecture.
+- Do not add Hardened Runtime exception entitlements unless a concrete feature requires one and the reason is documented.
+- CI pull-request packaging uses an ad-hoc signature only to validate bundle assembly. Ad-hoc artifacts must never be published as releases.
+
+### Notarization
+
+- Custom notarization uses `xcrun notarytool`; do not use deprecated `altool`.
+- Release CI authenticates to notarization with an App Store Connect API key supplied as GitHub Actions secrets.
+- The signed app is zipped, submitted, and stapled first.
+- The stapled app is placed in the DMG; the DMG is signed, submitted, and stapled separately.
+- Gatekeeper/codesign/stapler verification must pass before release publication.
+
+### DMG and architectures
+
+`scripts/create-dmg.sh` creates a compressed UDZO disk image containing:
+
+- `asdf GUI.app`;
+- an `Applications` symlink for drag-and-drop installation.
+
+Release CI builds separately on Apple Silicon and Intel runners. Published names are:
+
+```text
+asdf-gui-X.Y.Z-macos-arm64.dmg
+asdf-gui-X.Y.Z-macos-x86_64.dmg
+SHA256SUMS.txt
+```
+
+Do not silently drop an architecture from the release matrix; document any support-policy change first.
+
+### GitHub Release policy
+
+- Public releases are triggered only by tags matching `vMAJOR.MINOR.PATCH`; the workflow validates exact semantic-version form before building.
+- Release jobs fail if any required Apple signing/notarization secret is missing. There is no unsigned fallback.
+- Both architecture jobs must pass before the publish job creates the GitHub Release.
+- The publish job uses the repository-scoped `GITHUB_TOKEN` with `contents: write`; Apple credentials remain confined to macOS package jobs.
+- Release notes are generated by GitHub and SHA-256 checksums are attached with the DMGs.
+
+See `docs/RELEASING.md` for secret names, local package-check commands, and operational troubleshooting.
+
 ## Current implementation
 
 Implemented:
@@ -196,7 +284,13 @@ Implemented:
 - Plugin Manager window with Add/Update/Update All/Remove, live logs, cancellation, and removal impact;
 - Diagnostics window with info/where/which/reshim and copyable diagnostic report;
 - shared global write-operation gate across all mutation workflows;
-- macOS GitHub Actions CI running `swift test`.
+- reproducible SwiftPM -> `.app` packaging with Info.plist and generated ICNS;
+- ad-hoc packaging verification in CI;
+- Developer ID + Hardened Runtime signing automation;
+- `notarytool` app/DMG notarization and stapling automation;
+- signed DMG packaging with Applications shortcut;
+- tag-driven arm64/x86_64 GitHub Release workflow with checksums;
+- macOS GitHub Actions CI running `swift test` plus package verification.
 
 Run locally:
 
@@ -205,7 +299,7 @@ swift test
 swift run asdf-gui
 ```
 
-Xcode can open `Package.swift` directly.
+Build an ad-hoc local app/DMG using the commands in `docs/RELEASING.md`. Xcode can still open `Package.swift` directly.
 
 ## Roadmap
 
@@ -241,11 +335,17 @@ Xcode can open `Package.swift` directly.
 
 ### Phase 5 — Distribution
 
-- [ ] Decide whether to retain Swift Package app packaging or add an Xcode app project for distribution metadata.
-- [ ] App icon and release-facing metadata.
-- [ ] Developer ID signing and notarization.
-- [ ] DMG packaging.
-- [ ] Release workflow and GitHub Release automation.
+- [x] Retain Swift Package architecture and add reproducible app-bundle packaging.
+- [x] App icon and release-facing Info.plist metadata.
+- [x] Developer ID / Hardened Runtime signing automation.
+- [x] Apple `notarytool` notarization/stapling automation.
+- [x] DMG packaging and verification.
+- [x] Apple Silicon + Intel release artifacts.
+- [x] Tag-driven GitHub Release automation with checksums.
+- [ ] Configure real Apple signing/notarization secrets in repository settings.
+- [ ] Publish and smoke-test the first signed public release.
+
+The final two items are operational prerequisites/actions, not missing application code. Never store the required credentials in the repository.
 
 ## Current asdf command assumptions
 
@@ -280,19 +380,25 @@ When asking Codex to modify this repository:
 10. Never auto-install plugins as a side effect of runtime installation.
 11. Keep the Versions browser lazy; do not eagerly query every plugin's available versions.
 12. Do not persist CLI-derived caches/logs unless a deliberate persistence design is documented first.
-13. Update this document when architecture, commands, persistence, task policy, safety behavior, or roadmap status changes.
-14. Run `swift test` and report failures before considering a change complete.
+13. Preserve the SwiftPM-based distribution path; update `scripts/build-app.sh`, `scripts/create-dmg.sh`, and `docs/RELEASING.md` together when packaging changes.
+14. Never commit Developer ID certificates, `.p8` keys, passwords, or notarization credentials. Release credentials belong only in GitHub Actions secrets or an equivalent secure store.
+15. Public releases must remain Developer ID-signed, Hardened Runtime-enabled, notarized, stapled, and verified; do not add an unsigned fallback.
+16. Keep both arm64 and x86_64 release outputs unless the supported-architecture policy is deliberately changed and documented.
+17. Update this document when architecture, commands, persistence, task policy, safety behavior, distribution behavior, or roadmap status changes.
+18. Run `swift test` and the ad-hoc package verification before considering distribution changes complete.
 
 Suggested Codex prompt:
 
 ```text
-Read docs/DEVELOPMENT.md first and follow its architecture and safety contracts.
-Implement <task> in small focused changes. Keep CLI construction in AsdfService,
-process execution in AsdfCommandRunner, and project disk access in ProjectService.
-Join every mutation workflow to the documented global write-operation gate.
-Keep deterministic decisions in pure testable helpers, preserve destructive-action
-impact confirmation, add/update tests, run swift test, and update DEVELOPMENT.md
-when commands, architecture, persistence, task policy, or roadmap status changes.
+Read docs/DEVELOPMENT.md and docs/RELEASING.md first and follow their architecture,
+safety, and distribution contracts. Implement <task> in small focused changes.
+Keep CLI construction in AsdfService, process execution in AsdfCommandRunner,
+and project disk access in ProjectService. Join every mutation workflow to the
+global write-operation gate. Preserve impact confirmation for destructive actions.
+For packaging changes, keep the SwiftPM app-bundle path reproducible, never commit
+Apple credentials, and keep signing/notarization verification strict. Add/update
+tests, run swift test and package verification, and update documentation when the
+architecture, commands, persistence, task policy, or distribution behavior changes.
 ```
 
 ## Design principles
@@ -303,3 +409,5 @@ when commands, architecture, persistence, task policy, or roadmap status changes
 - Keep failure output visible and actionable.
 - Make expensive or destructive behavior explicit.
 - Show known impact before deletion.
+- Keep packaging reproducible and credentials out of source control.
+- Fail closed on release signing/notarization problems rather than publishing weaker artifacts.
