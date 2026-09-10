@@ -2,7 +2,7 @@
 
 Native macOS GUI for [asdf](https://asdf-vm.com/), built with SwiftUI and Foundation.
 
-The project keeps asdf and `.tool-versions` as the sources of truth. The app is a typed, visual control and explanation layer over the existing CLI rather than a reimplementation of version management.
+The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings as the sources of truth. The app is a typed, visual control and explanation layer over the existing CLI rather than a reimplementation of version management.
 
 ## Requirements
 
@@ -18,7 +18,7 @@ The project keeps asdf and `.tool-versions` as the sources of truth. The app is 
 - Card-based project status with Installed / Missing / System / Local path / Plugin missing / Unknown states.
 - Visual `.tool-versions` management without exposing a raw text editor.
 - Add/edit/reorder fallback chains through `asdf set <tool> <version...>` in the project directory.
-- Delete-one-tool is the only guarded direct-file exception because asdf 0.20 has no delete-entry command; it preserves unrelated lines/comments/permissions and rejects stale or duplicate target entries.
+- Delete-one-tool is the only guarded `.tool-versions` direct-file exception because asdf 0.20 has no delete-entry command; it preserves unrelated lines/comments/permissions and rejects stale or duplicate target entries.
 - Install Missing uses deterministic fallback planning, streaming logs, cancellation, and the application-wide write gate.
 
 ### Versions
@@ -44,7 +44,29 @@ The project keeps asdf and `.tool-versions` as the sources of truth. The app is 
 
 The Overview page links to a full **Project Health** report. It combines `.tool-versions` requirements with `asdf current` to surface missing plugins, missing runtimes when no fallback is usable, unknown lookup state, unreadable/empty configuration, effective runtimes reported as not installed, and the parent/Home `.tool-versions` files actually supplying inherited versions.
 
+Health now offers explicit, per-issue repair actions only when the remedy is deterministic:
+
+- **Plugin missing** → confirm and run `asdf plugin add <tool>`;
+- **Runtime missing** → confirm and install the first missing configured fallback with `asdf install <tool> <version>`.
+
+There is intentionally no **Fix All**. Health repairs reuse the global mutation gate and live task logs, never silently rewrite `.tool-versions`, and leave uncertain states such as lookup failures as diagnostics instead of guessing.
+
 The full resolution scan is on demand so normal startup stays lightweight.
+
+### asdf machine configuration (`.asdfrc`)
+
+**asdf Configuration…** provides a structured editor for the six standard asdf 0.20 machine settings:
+
+- `legacy_version_file`;
+- `use_release_candidates`;
+- `always_keep_download`;
+- `plugin_repository_last_check_duration` (`0`, a minute interval, or `never`);
+- `disable_plugin_short_name_repository`;
+- `concurrency` (`auto` or a positive core count).
+
+The editor uses `$HOME/.asdfrc` unless `ASDF_CONFIG_FILE` points to an absolute custom path, and warns when `ASDF_CONCURRENCY` overrides the saved concurrency value. It never exposes a raw text editor. Saving updates only those six known keys, preserves unrelated comments/custom settings/plugin hooks and POSIX permissions, and aborts if the file changed after it was loaded.
+
+asdf does not expose a CLI command for changing `.asdfrc`, so this is a documented, narrowly scoped direct-file configuration workflow rather than a shell-command wrapper.
 
 ### Plugins and diagnostics
 
@@ -70,6 +92,7 @@ The full resolution scan is on demand so normal startup stays lightweight.
 - Only one mutation/bootstrap/configuration operation runs application-wide at a time.
 - Potentially destructive runtime/plugin removal shows known impact first.
 - `.tool-versions` remains deterministic: Update Center never writes `latest` into project files.
+- Structured `.asdfrc` writes are race-checked and limited to the six documented standard keys; unknown lines and plugin hooks are preserved.
 
 ## Run from source
 
@@ -103,4 +126,4 @@ SIGN_IDENTITY=- \
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines the typed command boundaries, `.tool-versions` mutation rules, global write gate, localization, Resolution/Environment/Health behavior, update-center guarantees and distribution contracts.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, the global write gate, localization, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
