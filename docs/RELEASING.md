@@ -1,24 +1,57 @@
 # Releasing asdf GUI
 
-This document describes the macOS distribution pipeline. Keep it in sync with `.github/workflows/release.yml` and the scripts under `scripts/`.
+This is the operational runbook for macOS packaging and GitHub Releases. Keep it synchronized with `.github/workflows/release.yml` and the scripts under `scripts/`.
 
-## Distribution model
+## Distribution modes
 
-asdf GUI is distributed outside the Mac App Store as a Developer ID-signed and Apple-notarized `.dmg`.
+asdf GUI is distributed outside the Mac App Store and remains **non-App-Sandboxed** so it can execute the user's local `asdf` binary and work with selected project directories.
 
-The application intentionally remains **non-App-Sandboxed** because it needs to invoke the user's local `asdf` executable and work with project directories selected by the user. The release does enable the Hardened Runtime during code signing.
+The repository supports two release modes:
 
-The repository remains a Swift Package rather than adding an Xcode project purely for packaging. `scripts/build-app.sh` creates the standard macOS `.app` bundle around the SwiftPM release executable.
+### Ad-hoc mode — no paid Apple Developer account required
 
-Release artifacts are architecture-specific:
+When none of the Apple signing secrets are configured, the Release workflow automatically builds an **ad-hoc signed** app and DMG.
 
-- `asdf-gui-X.Y.Z-macos-arm64.dmg`
-- `asdf-gui-X.Y.Z-macos-x86_64.dmg`
-- `SHA256SUMS.txt`
+Ad-hoc signing provides bundle integrity, but it does **not** establish Apple trust and cannot be notarized. macOS Gatekeeper will therefore warn on first launch. The release is automatically marked as a GitHub **prerelease**, and artifact names include `adhoc`.
 
-## Local unsigned/ad-hoc package check
+Users should install from the DMG, then use **Control-click / right-click `asdf GUI.app` → Open → Open** on first launch. After explicit approval, normal launches should work.
 
-A Developer ID certificate is not required to verify the bundle/DMG assembly locally:
+Do not describe an ad-hoc build as Apple-signed, notarized, or Gatekeeper-trusted.
+
+### Developer ID mode — optional future upgrade
+
+If all six documented Apple secrets are configured, the same workflow automatically switches to Developer ID mode:
+
+- Developer ID Application signing;
+- Hardened Runtime + secure timestamp;
+- Apple `notarytool` notarization;
+- stapling for the app and DMG;
+- Gatekeeper verification;
+- normal GitHub Release rather than prerelease.
+
+If only some Apple secrets are configured, the workflow fails rather than silently choosing a weaker mode.
+
+## Architecture artifacts
+
+Release builds are architecture-specific:
+
+```text
+asdf-gui-X.Y.Z-macos-arm64-adhoc.dmg
+asdf-gui-X.Y.Z-macos-x86_64-adhoc.dmg
+```
+
+or, after Developer ID credentials are configured:
+
+```text
+asdf-gui-X.Y.Z-macos-arm64-developer-id.dmg
+asdf-gui-X.Y.Z-macos-x86_64-developer-id.dmg
+```
+
+Every release also includes `SHA256SUMS.txt`.
+
+## Local ad-hoc package check
+
+No Apple account is required:
 
 ```bash
 rm -rf dist
@@ -31,124 +64,145 @@ bash scripts/build-app.sh
 SIGN_IDENTITY=- \
 bash scripts/create-dmg.sh \
   "dist/asdf GUI.app" \
-  "dist/asdf-gui-0.0.0-dev-macos-$(uname -m).dmg"
+  "dist/asdf-gui-0.0.0-dev-macos-$(uname -m)-adhoc.dmg"
 
 bash scripts/verify-package.sh \
   "dist/asdf GUI.app" \
-  "dist/asdf-gui-0.0.0-dev-macos-$(uname -m).dmg"
+  "dist/asdf-gui-0.0.0-dev-macos-$(uname -m)-adhoc.dmg"
 ```
 
-The normal GitHub Actions CI performs this ad-hoc packaging check on every pull request and push to `main`.
+Normal CI runs this packaging verification on every pull request and push to `main`.
 
-## Apple prerequisites
+## Release triggers
 
-A signed public release requires:
+The workflow supports two triggers.
 
-1. An Apple Developer Program account.
-2. A **Developer ID Application** certificate exported as a `.p12` together with its export password.
-3. An App Store Connect API key (`.p8`) that can authenticate to the Apple notary service, plus its Key ID and Issuer ID.
-
-Do not commit any certificate, private key, password, or API credential to this repository.
-
-## Required GitHub Actions secrets
-
-Configure these repository or environment secrets before creating a release tag:
-
-| Secret | Purpose |
-| --- | --- |
-| `APPLE_DEVELOPER_ID_P12_BASE64` | Base64-encoded Developer ID Application `.p12` |
-| `APPLE_DEVELOPER_ID_P12_PASSWORD` | Password used when exporting the `.p12` |
-| `APPLE_DEVELOPER_ID_APPLICATION_IDENTITY` | Exact codesigning identity, e.g. `Developer ID Application: Name (TEAMID)` |
-| `APPLE_NOTARY_KEY_P8_BASE64` | Base64-encoded App Store Connect API `.p8` private key |
-| `APPLE_NOTARY_KEY_ID` | App Store Connect API Key ID |
-| `APPLE_NOTARY_ISSUER_ID` | App Store Connect Issuer ID |
-
-Example commands for producing the base64 values on macOS without line wrapping:
-
-```bash
-base64 -i DeveloperIDApplication.p12 | pbcopy
-base64 -i AuthKey_ABC123XYZ.p8 | pbcopy
-```
-
-Store the resulting values in GitHub Actions secrets; never paste them into source files, issues, PRs, or CI logs.
-
-## Release process
-
-Public releases are tag-driven. Use an exact semantic version tag:
-
-```text
-vMAJOR.MINOR.PATCH
-```
-
-For example:
+### Standard tag trigger
 
 ```bash
 git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The `Release` workflow then:
+### Publish-branch trigger
 
-1. Validates the tag and required secrets.
-2. Builds independently on Apple Silicon and Intel macOS runners.
-3. Imports the Developer ID certificate into a temporary CI keychain.
-4. Builds the release `.app` and signs it with Hardened Runtime + secure timestamp.
-5. Submits a ZIP containing the app to `notarytool` and waits for Apple notarization.
-6. Staples the notarization ticket to the app and performs a Gatekeeper assessment.
-7. Creates and signs a compressed DMG containing the app plus an `/Applications` shortcut.
-8. Submits the DMG to `notarytool`, staples its ticket, and verifies the package.
-9. Uploads both architecture-specific DMGs as workflow artifacts.
-10. Generates SHA-256 checksums and creates the GitHub Release with generated release notes.
-
-The workflow intentionally fails instead of creating an unsigned release if any Apple credential is missing.
-
-## Signing details
-
-`packaging/asdf-gui.entitlements` is intentionally empty. The app is **not sandboxed** and currently requires no Hardened Runtime exception entitlements.
-
-`build-app.sh` signs the app with:
+A branch named exactly like this also triggers a release:
 
 ```text
-codesign --options runtime --timestamp
+publish/v0.1.0
 ```
 
-For CI package verification without Apple credentials, the same script uses an ad-hoc signature (`SIGN_IDENTITY=-`). Ad-hoc packages are only build/test artifacts and must not be published as releases.
+This exists so automation that can create branches but cannot directly create Git tags can still publish a release. The workflow resolves the branch name to `v0.1.0`, and `gh release create --target` creates the release tag at that commit if necessary.
 
-## Notarization details
+Use release/publish branches only intentionally. They are release triggers, not normal development branches.
 
-`scripts/notarize.sh` uses `xcrun notarytool submit ... --wait` with an App Store Connect API key. The workflow notarizes and staples both the app and the final DMG.
+## What the workflow does in ad-hoc mode
 
-Do not switch back to `altool`; Apple's current notarization service requires `notarytool` or the Notary API for custom workflows.
+1. Validates `vMAJOR.MINOR.PATCH`.
+2. Confirms that no Apple signing secrets are configured.
+3. Builds independently on Apple Silicon and Intel runners.
+4. Creates the `.app` bundle from the SwiftPM release executable.
+5. Applies an ad-hoc Hardened Runtime signature (`SIGN_IDENTITY=-`).
+6. Creates the drag-to-Applications DMG.
+7. Verifies bundle metadata, the ad-hoc code signature, executable presence, icon, and DMG integrity.
+8. Uploads both architecture artifacts.
+9. Generates SHA-256 checksums.
+10. Creates a GitHub prerelease with explicit Gatekeeper instructions.
 
-## Version metadata
+No notarization or `spctl` trust assertion is attempted in this mode because those would be expected to fail without Developer ID trust.
 
-The release tag `vX.Y.Z` becomes `CFBundleShortVersionString = X.Y.Z`.
+## Optional Apple prerequisites
 
-`CFBundleVersion` is the GitHub Actions run number. Local builds may set `BUILD_NUMBER` manually.
+A future trusted/notarized release requires:
 
-The bundle identifier is:
+1. Apple Developer Program membership.
+2. A **Developer ID Application** certificate exported as `.p12` plus its password.
+3. An App Store Connect API key (`.p8`) with Key ID and Issuer ID for notarization.
+
+Required GitHub Actions secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `APPLE_DEVELOPER_ID_P12_BASE64` | Base64 Developer ID Application `.p12` |
+| `APPLE_DEVELOPER_ID_P12_PASSWORD` | `.p12` export password |
+| `APPLE_DEVELOPER_ID_APPLICATION_IDENTITY` | Exact codesigning identity |
+| `APPLE_NOTARY_KEY_P8_BASE64` | Base64 App Store Connect API `.p8` |
+| `APPLE_NOTARY_KEY_ID` | API Key ID |
+| `APPLE_NOTARY_ISSUER_ID` | API Issuer ID |
+
+All six must be present to enable Developer ID mode. Never commit certificates, private keys, passwords, or API credentials.
+
+## Packaging details
+
+The project stays SwiftPM-based. `scripts/build-app.sh` creates:
 
 ```text
-io.github.syjsion.asdf-gui
+asdf GUI.app/
+  Contents/
+    Info.plist
+    MacOS/asdf-gui
+    Resources/AppIcon.icns
 ```
 
-The deployment target remains macOS 14.0 even though CI/release builders may run newer macOS versions.
+Metadata:
 
-## App icon
+- bundle identifier: `io.github.syjsion.asdf-gui`;
+- minimum macOS: 14.0;
+- release version: tag/branch version without the leading `v`;
+- build number: GitHub Actions run number.
 
-The release icon is generated deterministically by `scripts/generate-app-icon.py` into the standard macOS iconset sizes, then converted to `AppIcon.icns` with `iconutil`. This avoids checking generated binary icon assets into Git while keeping packaging reproducible and dependency-free.
+The App Icon is generated deterministically by `scripts/generate-app-icon.py` and converted with `iconutil`.
 
-If the visual identity changes later, keep the generator or replace it with committed design-source assets plus a reproducible export process. Update this document either way.
+`scripts/create-dmg.sh` creates a compressed UDZO DMG containing the app plus an `/Applications` symlink.
+
+## Signing and notarization details
+
+`packaging/asdf-gui.entitlements` intentionally does not enable App Sandbox or Hardened Runtime exception entitlements.
+
+Ad-hoc mode uses:
+
+```text
+codesign --options runtime --sign -
+```
+
+Developer ID mode uses:
+
+```text
+codesign --options runtime --timestamp --sign <Developer ID Application identity>
+```
+
+`scripts/notarize.sh` uses `xcrun notarytool submit ... --wait` and `xcrun stapler`. Do not reintroduce deprecated `altool`.
+
+## First-launch behavior for ad-hoc builds
+
+Because the downloaded DMG/app receives the quarantine attribute and the app is not notarized, double-clicking may be blocked by Gatekeeper.
+
+Preferred user flow:
+
+1. Open the DMG.
+2. Drag **asdf GUI** to Applications.
+3. In Applications, Control-click/right-click **asdf GUI**.
+4. Choose **Open**.
+5. Confirm **Open** in the warning dialog.
+
+This preserves macOS security prompts and requires explicit user approval. Do not instruct users to globally disable Gatekeeper.
 
 ## Troubleshooting
 
-If signing fails, inspect available identities in the temporary/local keychain:
+Verify an ad-hoc package:
+
+```bash
+codesign --verify --deep --strict --verbose=4 "asdf GUI.app"
+hdiutil verify "asdf-gui-X.Y.Z-macos-arm64-adhoc.dmg"
+```
+
+Developer ID identity inspection:
 
 ```bash
 security find-identity -v -p codesigning
 ```
 
-If notarization fails, use the submission ID printed by `notarytool` to retrieve the log:
+Notarization log lookup:
 
 ```bash
 xcrun notarytool log <submission-id> \
@@ -157,12 +211,4 @@ xcrun notarytool log <submission-id> \
   --issuer <issuer-id>
 ```
 
-If Gatekeeper assessment fails after successful notarization:
-
-```bash
-codesign --verify --deep --strict --verbose=4 "asdf GUI.app"
-spctl --assess --type execute --verbose=4 "asdf GUI.app"
-xcrun stapler validate "asdf GUI.app"
-```
-
-Do not work around signing or notarization failures by disabling Hardened Runtime or publishing an unsigned DMG. Diagnose the failing component instead.
+For ad-hoc releases, Gatekeeper rejection is expected until the user explicitly approves the app. For Developer ID mode, Gatekeeper rejection is a release failure and must be investigated before publication.
