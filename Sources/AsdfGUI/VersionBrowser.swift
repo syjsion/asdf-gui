@@ -17,8 +17,11 @@ enum VersionCatalog {
         let installedSet = Set(installed)
         var seen = Set<String>()
         var ordered: [String] = []
-        var candidates = available + installed
 
+        // Installed versions are intentionally first. Plugin catalogs can contain
+        // hundreds of entries; keeping the local versions at the top makes the
+        // screen useful without requiring an Installed-only filter first.
+        var candidates = installed + available
         if let latest, !latest.isEmpty {
             candidates.append(latest)
         }
