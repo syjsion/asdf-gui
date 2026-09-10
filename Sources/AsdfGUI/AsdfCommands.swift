@@ -21,6 +21,11 @@ struct AsdfCommands: Commands {
                 openWindow(id: "diagnostics")
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
+
+            Button("Shell Integration…") {
+                openWindow(id: "shell-integration")
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
         }
     }
 }
