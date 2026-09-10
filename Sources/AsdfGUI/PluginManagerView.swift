@@ -5,6 +5,7 @@ struct PluginManagerView: View {
     @Environment(AppModel.self) private var appModel
     @State private var state = PluginManagementModel()
     @State private var isAddingPlugin = false
+    @State private var isDiscoveringPlugins = false
     @State private var pluginName = ""
     @State private var pluginURL = ""
 
@@ -15,13 +16,17 @@ struct PluginManagerView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Plugin Manager").font(.largeTitle.bold())
-                    Text("Add, update, and safely remove asdf plugins.")
+                    Text("Add, discover, update, and safely remove asdf plugins.")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if state.isPreparingRemoval {
                     ProgressView().controlSize(.small)
                 }
+                Button("Discover", systemImage: "magnifyingglass") {
+                    isDiscoveringPlugins = true
+                }
+                .disabled(state.isBusy)
                 Button("Add Plugin", systemImage: "plus") {
                     pluginName = ""
                     pluginURL = ""
@@ -53,7 +58,7 @@ struct PluginManagerView: View {
                 ContentUnavailableView(
                     "No plugins installed",
                     systemImage: "shippingbox",
-                    description: Text("Add a plugin by short name or, preferably, by its Git URL.")
+                    description: Text("Discover the official catalog, or add a plugin by short name / Git URL.")
                 )
             } else {
                 Table(appModel.plugins) {
@@ -86,6 +91,9 @@ struct PluginManagerView: View {
         .padding(24)
         .sheet(isPresented: $isAddingPlugin) {
             addPluginSheet
+        }
+        .sheet(isPresented: $isDiscoveringPlugins) {
+            PluginDiscoveryView(operationModel: state)
         }
         .sheet(item: $state.removalImpact) { impact in
             PluginRemovalConfirmationView(
