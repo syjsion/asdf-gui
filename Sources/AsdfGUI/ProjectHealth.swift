@@ -12,11 +12,31 @@ enum ProjectHealthSeverity: Int, Comparable, Hashable, Sendable {
     }
 }
 
+enum ProjectHealthFix: Hashable, Sendable {
+    case installPlugin(tool: String)
+    case installRuntime(tool: String, version: String)
+}
+
 struct ProjectHealthIssue: Identifiable, Hashable, Sendable {
     let id: String
     let severity: ProjectHealthSeverity
     let title: String
     let detail: String
+    let fix: ProjectHealthFix?
+
+    init(
+        id: String,
+        severity: ProjectHealthSeverity,
+        title: String,
+        detail: String,
+        fix: ProjectHealthFix? = nil
+    ) {
+        self.id = id
+        self.severity = severity
+        self.title = title
+        self.detail = detail
+        self.fix = fix
+    }
 }
 
 struct ProjectHealthReport: Identifiable, Hashable, Sendable {
@@ -61,17 +81,20 @@ enum ProjectHealthAnalyzer {
         }
 
         for requirement in snapshot.requirements {
-            let states = requirement.versions.map { status(requirement.tool, $0) }
-            if states.contains(where: \.isSatisfied) { continue }
+            let states = requirement.versions.map { version in
+                (version, status(requirement.tool, version))
+            }
+            if states.contains(where: { $0.1.isSatisfied }) { continue }
 
-            if states.contains(.pluginMissing) {
+            if states.contains(where: { $0.1 == .pluginMissing }) {
                 issues.append(ProjectHealthIssue(
                     id: "plugin-missing-\(requirement.tool)",
                     severity: .error,
                     title: "Plugin missing: \(requirement.tool)",
-                    detail: "Install the \(requirement.tool) plugin before this project can use its configured runtime."
+                    detail: "Install the \(requirement.tool) plugin before this project can use its configured runtime.",
+                    fix: .installPlugin(tool: requirement.tool)
                 ))
-            } else if states.contains(.unknown) {
+            } else if states.contains(where: { $0.1 == .unknown }) {
                 issues.append(ProjectHealthIssue(
                     id: "lookup-failed-\(requirement.tool)",
                     severity: .warning,
@@ -79,11 +102,13 @@ enum ProjectHealthAnalyzer {
                     detail: "asdf could not determine installed versions for this tool. Refresh or inspect Diagnostics."
                 ))
             } else {
+                let installable = states.first(where: { $0.1 == .missing })?.0
                 issues.append(ProjectHealthIssue(
                     id: "runtime-missing-\(requirement.tool)",
                     severity: .error,
                     title: "Runtime missing: \(requirement.tool)",
-                    detail: "None of the configured fallbacks are currently usable: \(requirement.versions.joined(separator: " → "))"
+                    detail: "None of the configured fallbacks are currently usable: \(requirement.versions.joined(separator: " → "))",
+                    fix: installable.map { .installRuntime(tool: requirement.tool, version: $0) }
                 ))
             }
         }
@@ -173,7 +198,11 @@ struct ProjectHealthView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var model = ProjectHealthModel()
+    @State private var pluginOperations = PluginManagementModel()
     @State private var issuesOnly = false
+    @State private var pendingFix: ProjectHealthFix?
+    @State private var pendingProject: ManagedProject?
+    @State private var isShowingFixConfirmation = false
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
@@ -197,11 +226,13 @@ struct ProjectHealthView: View {
                 Toggle(language.localized("Issues only"), isOn: $issuesOnly)
                     .toggleStyle(.checkbox)
                 Button(language.localized("Refresh"), systemImage: "arrow.clockwise") {
-                    Task { await appModel.reloadProjects(); await model.load(appModel: appModel) }
+                    Task { await refreshHealth() }
                 }
-                .disabled(model.isLoading || appModel.hasActiveOperation)
+                .disabled(model.isLoading || appModel.hasActiveOperation || pluginOperations.isBusy)
                 Button(language.localized("Close")) { dismiss() }
             }
+
+            operationPanels
 
             if visibleReports.isEmpty && !model.isLoading {
                 ContentUnavailableView(
@@ -222,8 +253,69 @@ struct ProjectHealthView: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 820, minHeight: 620)
+        .frame(minWidth: 860, minHeight: 640)
         .task { await model.load(appModel: appModel) }
+        .onChange(of: appModel.plugins) { _, _ in
+            Task { await model.load(appModel: appModel) }
+        }
+        .onChange(of: appModel.installedVersionsByTool) { _, _ in
+            Task { await model.load(appModel: appModel) }
+        }
+        .onDisappear {
+            pluginOperations.cancelOperation()
+        }
+        .alert(
+            language.localized("Apply health fix?"),
+            isPresented: $isShowingFixConfirmation,
+            presenting: pendingFix
+        ) { fix in
+            Button(language.localized("Apply Fix")) {
+                apply(fix)
+            }
+            Button(language.localized("Cancel"), role: .cancel) {
+                pendingFix = nil
+                pendingProject = nil
+            }
+        } message: { fix in
+            Text(fixConfirmationMessage(fix))
+        }
+    }
+
+    @ViewBuilder
+    private var operationPanels: some View {
+        if let operation = pluginOperations.activeOperation {
+            GroupBox(language.localized("Health Fix Task")) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text(pluginOperationTitle(operation)).font(.headline)
+                        Spacer()
+                        if operation.isRunning {
+                            Button(language.localized("Cancel"), role: .destructive) {
+                                pluginOperations.cancelOperation()
+                            }
+                        } else {
+                            Button(language.localized("Close")) {
+                                pluginOperations.dismissOperation()
+                            }
+                        }
+                    }
+                    if let error = operation.errorMessage {
+                        Text(error).foregroundStyle(.red).textSelection(.enabled)
+                    }
+                    ScrollView {
+                        Text(operation.log)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(minHeight: 70, maxHeight: 130)
+                }
+            }
+        }
+
+        if let task = appModel.activeVersionOperation {
+            VersionOperationPanel(task: task)
+        }
     }
 
     @ViewBuilder
@@ -255,6 +347,16 @@ struct ProjectHealthView: View {
                                     .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
                             }
+                            Spacer(minLength: 12)
+                            if let fix = issue.fix {
+                                Button(fixButtonTitle(fix)) {
+                                    pendingFix = fix
+                                    pendingProject = report.project
+                                    isShowingFixConfirmation = true
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(model.isLoading || appModel.hasActiveOperation || pluginOperations.isBusy)
+                            }
                         }
                     }
                 }
@@ -273,6 +375,57 @@ struct ProjectHealthView: View {
                 }
             }
             .padding(2)
+        }
+    }
+
+    private func apply(_ fix: ProjectHealthFix) {
+        defer {
+            pendingFix = nil
+            pendingProject = nil
+        }
+        switch fix {
+        case .installPlugin(let tool):
+            pluginOperations.addPlugin(name: tool, gitURL: nil, appModel: appModel)
+        case .installRuntime(let tool, let version):
+            appModel.installVersionFromBrowser(tool: tool, version: version)
+        }
+    }
+
+    private func refreshHealth() async {
+        await appModel.reloadProjects()
+        await model.load(appModel: appModel)
+    }
+
+    private func fixButtonTitle(_ fix: ProjectHealthFix) -> String {
+        switch fix {
+        case .installPlugin:
+            return language.localized("Install Plugin")
+        case .installRuntime:
+            return language.localized("Install Runtime")
+        }
+    }
+
+    private func fixConfirmationMessage(_ fix: ProjectHealthFix) -> String {
+        switch fix {
+        case .installPlugin(let tool):
+            if language == .simplifiedChinese {
+                return "将执行 asdf plugin add \(tool)。安装使用 asdf 的 short-name 仓库；不会修改任何项目的 .tool-versions。"
+            }
+            return "This runs asdf plugin add \(tool) using asdf's short-name repository. It will not modify any project's .tool-versions."
+        case .installRuntime(let tool, let version):
+            if language == .simplifiedChinese {
+                return "将执行 asdf install \(tool) \(version)。只安装该精确版本，不会修改项目、父级或 Home 的 .tool-versions。"
+            }
+            return "This runs asdf install \(tool) \(version). It installs only that exact runtime and does not rewrite Project, Parent, or Home .tool-versions."
+        }
+    }
+
+    private func pluginOperationTitle(_ operation: PluginOperationTaskState) -> String {
+        switch operation.status {
+        case .running: return language.localized("Installing plugin…")
+        case .succeeded: return language.localized("Plugin installed")
+        case .failed: return language.localized("Plugin installation failed")
+        case .cancelled: return language.localized("Plugin installation cancelled")
         }
     }
 
