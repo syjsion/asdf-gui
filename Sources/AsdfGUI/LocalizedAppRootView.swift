@@ -4,6 +4,7 @@ private enum LocalizedSidebarItem: String, CaseIterable, Identifiable {
     case overview
     case projects
     case versions
+    case resolution
     case plugins
 
     var id: String { rawValue }
@@ -13,6 +14,7 @@ private enum LocalizedSidebarItem: String, CaseIterable, Identifiable {
         case .overview: "Overview"
         case .projects: "Projects"
         case .versions: "Versions"
+        case .resolution: "Resolution"
         case .plugins: "Plugins"
         }
     }
@@ -22,6 +24,7 @@ private enum LocalizedSidebarItem: String, CaseIterable, Identifiable {
         case .overview: "gauge.with.dots.needle.67percent"
         case .projects: "folder"
         case .versions: "square.stack.3d.up"
+        case .resolution: "arrow.triangle.branch"
         case .plugins: "shippingbox"
         }
     }
@@ -73,6 +76,7 @@ struct LocalizedAppRootView: View {
             case .overview: OverviewView()
             case .projects: ProjectsPolishedView()
             case .versions: VersionsPolishedView()
+            case .resolution: ResolutionView()
             case .plugins: PluginsView()
             }
         }
