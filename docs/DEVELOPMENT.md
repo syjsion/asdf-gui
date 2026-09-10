@@ -6,6 +6,8 @@ This is the architecture and safety handoff for future development, especially w
 
 `asdf-gui` is a native macOS SwiftUI application that makes common asdf workflows discoverable without replacing asdf. The asdf CLI and `.tool-versions` remain the sources of truth; the app is a typed UI/service layer over them.
 
+The product should explain state and relationships, not merely mirror every CLI command as a button.
+
 ## Technical constraints
 
 - macOS only for now; minimum macOS 14.
@@ -17,7 +19,7 @@ This is the architecture and safety handoff for future development, especially w
 - Destructive operations must show known impact and require explicit confirmation.
 - Only one mutation/bootstrap/configuration operation may run application-wide at a time.
 - Distribution stays outside the Mac App Store and remains non-App-Sandboxed.
-- Do not persist copies of `.tool-versions`, plugin/runtime state, version catalogs, task logs, diagnostics, update responses, or shell-file contents.
+- Do not persist copies of `.tool-versions`, plugin/runtime state, catalogs, task logs, diagnostics, resolution responses, update responses, or shell-file contents.
 
 ## Current architecture
 
@@ -30,14 +32,20 @@ SwiftUI scenes
           -> ProjectsPolishedView
               -> ProjectToolVersionsManagerView
                   -> AppModel project configuration APIs
-                      -> AsdfService.setVersion (normal add/edit/reorder)
-                      -> ToolVersionsMutationService (guarded delete-only exception)
+                      -> AsdfService.setVersion
+                      -> ToolVersionsMutationService (delete-only exception)
           -> VersionsPolishedView
+          -> ResolutionView
+              -> ResolutionModel
+                  -> AsdfService.current
+                  -> AsdfService.shimVersions
+                  -> AsdfService.whichPathInDirectory
           -> Plugins
       -> feature windows
           -> Getting Started
           -> Set Runtime Version
           -> Plugin Manager
+              -> PluginDiscoveryView / PluginDiscoveryModel
           -> Diagnostics
           -> Shell Integration
           -> About + AppUpdateModel
@@ -78,7 +86,6 @@ App updates
 Distribution
   -> SwiftPM release executable
       -> scripts/build-app.sh
-          -> .app + Info.plist + AppIcon.icns + localization resources
       -> scripts/create-dmg.sh
       -> scripts/notarize.sh (Developer ID mode only)
       -> .github/workflows/release.yml
@@ -87,16 +94,17 @@ Distribution
 ## Core responsibilities
 
 - `LocalizedAppRootView`: app-level setup/main-navigation gate and one-time Getting Started presentation.
-- `AppModel`: shared application/project/runtime state and the application-wide mutation gate. Keep it `@MainActor`.
-- `AsdfService`: typed asdf commands/parsers only.
+- `AppModel`: shared project/runtime state and application-wide mutation gate. Keep it `@MainActor`.
+- `AsdfService`: typed asdf commands and deterministic output parsers.
 - `AsdfCommandRunner`: process lifecycle, concurrent stdout/stderr draining, streaming, cancellation, complete result.
 - `ProjectService`: project disk reads and `.tool-versions` parsing; no general-purpose writes.
-- `ToolVersionsMutationService`: the narrowly-scoped delete-one-tool fallback because current asdf has no delete-entry command. It is not a generic text editor.
-- `ProjectsPolishedView`: card-based project presentation; do not put variable-height multi-runtime content back inside macOS `List` rows.
-- `ProjectToolVersionsManagerView`: visual management of a project's tool/version entries without exposing raw file editing.
-- `VersionCatalog`: deterministic installed-first merge/order of installed/available/latest runtime versions.
-- `VersionsPolishedView`: lazy per-plugin version browser. Installed versions remain at the beginning.
-- `AppLanguage`: persisted English / Simplified Chinese preference and locale selection.
+- `ToolVersionsMutationService`: narrowly-scoped delete-one-tool fallback because current asdf has no delete-entry command. It is not a generic text editor.
+- `ProjectsPolishedView`: card-based project presentation plus presentation-only search/sort.
+- `ProjectToolVersionsManagerView`: visual management of project tool/version entries without raw file editing.
+- `VersionCatalog`: installed-first merge/order of installed/available/latest runtime versions.
+- `ResolutionModel`: read-only explanation of current version resolution and shim/command resolution in a selected directory.
+- `PluginDiscoveryModel`: lazy read-only `asdf plugin list all` catalog lookup.
+- `AppLanguage`: persisted English / Simplified Chinese preference and fallback localization.
 - `AppUpdateChecker`: read-only public GitHub Release lookup.
 - `ShellIntegrationService`: deterministic marker-scoped shell configuration edits.
 - `AsdfInstaller`: verified official asdf binary bootstrap.
@@ -128,7 +136,9 @@ These operations share one application-wide gate:
 - plugin Add / Update / Update All / Remove;
 - Diagnostics `reshim`.
 
-Do not create a second independent write lock. Feature-local writers use `AppModel.beginExternalWriteOperation()` and release it exactly once on every success/failure/cancellation path.
+Read-only Resolution, version catalogs, plugin discovery, update checks, and diagnostics such as `info/where/which` do not acquire the mutation gate.
+
+Do not create a second independent write lock. Feature-local writers use `AppModel.beginExternalWriteOperation()` and release it exactly once on every path.
 
 ## asdf bootstrap contract
 
@@ -137,15 +147,14 @@ When no usable asdf executable is detected, show the dedicated setup UI instead 
 The installer must:
 
 1. request `https://api.github.com/repos/asdf-vm/asdf/releases/latest` over HTTPS;
-2. select the matching official macOS asset for the current app architecture (`darwin-arm64` or `darwin-amd64`);
+2. select the matching official macOS asset (`darwin-arm64` or `darwin-amd64`);
 3. require a valid GitHub asset `sha256:` digest;
-4. download the archive and calculate SHA-256 locally with CryptoKit;
-5. abort on a missing/malformed/mismatched digest;
-6. extract with direct `/usr/bin/tar` invocation;
-7. accept only a regular non-symlink `asdf` file;
-8. run the staged binary with `asdf version` before installing it;
-9. install to `~/.local/bin/asdf` without sudo/Homebrew;
-10. persist/activate that exact executable through `AppModel.setExecutable`.
+4. calculate SHA-256 locally with CryptoKit and abort on mismatch;
+5. extract with direct `/usr/bin/tar` invocation;
+6. accept only a regular non-symlink `asdf` file;
+7. run the staged binary with `asdf version` before installation;
+8. install to `~/.local/bin/asdf` without sudo/Homebrew;
+9. persist/activate that exact executable through `AppModel.setExecutable`.
 
 Never replace this flow with `curl | sh`, an unverified download, or silent shell-rc modification.
 
@@ -187,21 +196,14 @@ Supported app languages:
 Behavior:
 
 - first default follows `Locale.preferredLanguages`;
-- explicit user selection is persisted in `UserDefaults` under `AppLanguage.storageKey`;
-- language switching applies without app restart;
-- all major scene roots receive `\.locale` derived from the selected `AppLanguage`;
-- packaged builds copy `packaging/localizations/zh-Hans.lproj/Localizable.strings` into `Contents/Resources`;
-- `packaging/Info.plist` declares `en` and `zh-Hans` in `CFBundleLocalizations`;
-- runtime `String` values such as counts/statuses/messages must explicitly use the selected `AppLanguage` when literal-key localization cannot resolve them.
+- explicit selection is persisted under `AppLanguage.storageKey`;
+- language switching applies without restart;
+- major scene roots receive `\.locale` derived from `AppLanguage`;
+- packaged builds include `zh-Hans.lproj/Localizable.strings`;
+- `AppLanguage.localized` first uses the packaged strings table and then falls back to the in-code Simplified Chinese map when a newly introduced dynamic key is not yet consolidated into the table;
+- runtime `String` values and dynamically selected labels must explicitly use the selected `AppLanguage`.
 
-When adding visible UI:
-
-1. use literal SwiftUI strings when possible;
-2. add the Chinese key/value to `Localizable.strings`;
-3. handle dynamic status/count/message strings in both languages;
-4. keep package verification checking for `zh-Hans.lproj/Localizable.strings`.
-
-Do not persist translated copies of asdf output; raw command output remains raw.
+When adding visible UI, update the packaged localization table when practical and always provide a working Simplified Chinese path before merging. Raw asdf command output remains raw and is not translated/persisted.
 
 ## Projects contract
 
@@ -212,60 +214,28 @@ Do not persist translated copies of asdf output; raw command output remains raw.
 - A requirement is satisfied if any configured fallback is usable.
 - `system` and `path:*` are satisfied special values.
 - Missing plugins show `Plugin missing`; lookup failures show `Unknown`.
-- `Install Missing` never auto-installs plugins, installs sequentially, streams logs, supports cancellation, stops on first failure, and refreshes state after success.
+- `Install Missing` never auto-installs plugins, installs sequentially, streams logs, supports cancellation, stops on first failure, and refreshes after success.
 - The main Projects UI remains card-based (`ScrollView` + `LazyVStack`).
-- Project header/path/actions, requirement rows, fallback states, and install actions stay in stable visual regions that tolerate longer Chinese text.
+- Search is presentation-only and matches project name, path, and configured tool names.
+- Sort is presentation-only; current choices are Name, Path, and Tool count. Sorting/searching must never mutate persisted project order or project files.
 
 ### `.tool-versions` management
 
-The Projects page includes a visual **Manage .tool-versions** workflow. Users never receive a raw editable text view for the whole file.
+Users never receive a raw editable text view for the whole file.
 
-Normal writes must use asdf itself:
+Normal writes use:
 
 ```text
 asdf set <tool> <version> [<version>...]
 ```
 
-The command runs with `currentDirectoryURL` set to the managed project folder. This covers:
-
-- creating `.tool-versions` by adding the first tool;
-- adding a tool entry;
-- changing the primary version;
-- adding/removing versions within a fallback chain;
-- reordering a fallback chain.
-
-Rules for add/edit/reorder:
-
-- keep command construction inside `AsdfService` / AppModel project configuration APIs;
-- validate tool and version arguments before running the command;
-- version values must be individual asdf tokens (no whitespace);
-- allow exact versions plus explicit special values such as `system`, `ref:*`, and `path:*`;
-- selected fallback order is semantically significant and must be passed to `asdf set` unchanged;
-- version catalog lookup is lazy per selected tool;
-- catalog presentation is installed-first through `VersionCatalog.records`;
-- refresh project snapshots and installed-version status after a successful write;
-- all writes use the global mutation gate.
+with `currentDirectoryURL` set to the managed project. This covers file creation, add, edit, fallback insertion/removal, and fallback reordering. Version tokens must be individual asdf values and the selected fallback order must be passed unchanged.
 
 ### Delete-one-tool exception
 
-As of asdf 0.20, `asdf set` can create/update an entry but the CLI has no command to remove one tool entry from `.tool-versions`. Do **not** fake deletion by writing `system`, an empty version list, or an invented command.
+As of asdf 0.20, the CLI has no command to remove one tool entry from `.tool-versions`. Do not fake deletion using `system`, an empty list, or an invented command.
 
-`ToolVersionsMutationService` is the only permitted direct `.tool-versions` write and only for deleting one tool line after explicit confirmation.
-
-Delete rules:
-
-1. reread the current file immediately before mutation;
-2. parse only the target tool line;
-3. require exactly one matching tool entry;
-4. compare its current ordered versions with the versions shown by the UI; if they changed, abort with `configurationChanged`;
-5. if duplicate target-tool lines exist, abort rather than guess;
-6. delete exactly the matched line range, including its own newline when present;
-7. preserve every unrelated line, blank line, comment, and inline content outside that target line;
-8. perform an atomic write and restore existing POSIX permissions when possible;
-9. refresh project/runtime state after success;
-10. never evolve this service into a general `.tool-versions` text rewrite API without an explicit architecture decision and tests.
-
-Comments on the same line as the removed tool are intentionally removed with that tool line. Unrelated comments remain untouched.
+`ToolVersionsMutationService` is the only permitted direct `.tool-versions` writer and only for deleting one tool line after explicit confirmation. It must reread before mutation, reject duplicate target entries, verify expected ordered versions, preserve unrelated content/comments/permissions, write atomically, and refresh state afterward.
 
 ## Versions contract
 
@@ -275,41 +245,66 @@ Read commands:
 - `asdf latest <tool>`;
 - `asdf list all <tool>`.
 
-The browser stays lazy; never query every plugin's full available catalog on app launch.
+Catalogs stay lazy. `VersionCatalog.records` ordering is:
 
-`VersionCatalog.records` ordering contract:
-
-1. all locally installed versions, preserving their asdf-returned order;
-2. remaining available versions, preserving upstream order;
-3. latest version if absent from both lists;
+1. all locally installed versions in asdf-returned order;
+2. remaining available versions in upstream order;
+3. latest if absent;
 4. no duplicates.
-
-This installed-first ordering is intentional because catalogs may contain hundreds of versions. It also applies to version choices inside the project `.tool-versions` manager.
 
 Writes:
 
 - `asdf install <tool> <version>`;
 - `asdf uninstall <tool> <version>`.
 
-Uninstall always requires confirmation. `VersionUsageInspector` lists managed projects referencing the exact tool/version, including fallback entries. Runtime install/uninstall never rewrites project files.
+Uninstall always requires confirmation and `VersionUsageInspector` lists managed-project references.
 
 ## Version selection contract
 
 - Project: `asdf set <tool> <version>` in the selected project directory.
 - Home: `asdf set -u <tool> <version>`.
 
-These writes use the same application-wide mutation gate as the project manager. The Set Runtime Version window currently writes one selected version or `system`; project mode replaces that tool's existing fallback chain and explains the impact before confirmation.
+These writes use the global mutation gate. Project mode replaces the selected tool's existing fallback chain and explains the impact before confirmation.
 
-## Plugin management contract
+## Resolution and shim contract
+
+The Resolution page exists to explain asdf's effective behavior, especially Home/project inheritance and shim confusion.
+
+Supported read commands:
+
+```text
+asdf current [<tool>]
+asdf which <command>
+asdf shimversions <command>
+```
+
+Rules:
+
+- `asdf current` and `asdf which` must execute with `currentDirectoryURL` set to the selected Home/project context. Their answer depends on directory traversal of `.tool-versions`.
+- `shimversions` is context-independent and lists every installed plugin/version that provides the command.
+- `parseCurrent` treats the modern asdf output as aligned columns: Name, Version, Source, Installed.
+- Split aligned columns only on tabs or runs of 2+ whitespace so a Source path containing a single space and a Version field containing fallback values remain intact.
+- The Source column may be absent/blank; do not invent a path.
+- Installed is a boolean from asdf and should be shown explicitly instead of inferred from local caches.
+- Resolution is read-only and transient; do not persist results.
+- Prefer this explanatory workflow over adding a generic terminal.
+- Do not expose unrestricted `asdf exec` as a default GUI feature. If a future feature needs execution, define a constrained product workflow and threat model first.
+
+## Plugin management and discovery contract
 
 Supported commands:
 
-- `asdf plugin add <name> [<git-url>]`;
-- `asdf plugin update <name> [<git-ref>]`;
-- `asdf plugin update --all`;
-- `asdf plugin remove <name>`.
+```text
+asdf plugin list all
+asdf plugin add <name> [<git-url>]
+asdf plugin update <name> [<git-ref>]
+asdf plugin update --all
+asdf plugin remove <name>
+```
 
-Plugin mutations use the streaming/cancellable runner and global gate. Before removal, query installed versions and list every managed project that references the plugin. If impact lookup fails, do not offer blind destructive removal. Plugin removal never rewrites project files.
+`plugin list all` is a read-only, lazy catalog operation. The discovery UI searches short name and URL locally after loading the catalog. Installing from a catalog result should pass the returned Git URL to the existing add-plugin workflow when available; this follows asdf's recommendation to prefer explicit Git URLs over short-name lookup.
+
+Plugin mutations use the streaming/cancellable runner and global gate. Before removal, query installed versions and managed-project impact. Plugin removal never rewrites project files.
 
 ## Diagnostics contract
 
@@ -320,24 +315,11 @@ Supported diagnostics:
 - `asdf which <command>`;
 - `asdf reshim <tool> <version>`.
 
-`info`, `where`, and `which` are reads. `reshim` is a write and uses the global gate. Diagnostic output/reports are transient and copyable but not persisted.
+`info`, `where`, and `which` are reads. `reshim` is a write and uses the global gate. Resolution's directory-aware `which` is separate from the generic diagnostic lookup.
 
 ## App update-check contract
 
-The About window performs automatic-on-open and manual update checking.
-
-Release-channel behavior:
-
-- current builds may be GitHub prereleases because ad-hoc unsigned builds are intentionally prereleases;
-- GitHub `/releases/latest` excludes prereleases, so update checking uses `GET /repos/syjsion/asdf-gui/releases` and resolves the newest non-draft semantic version itself;
-- compare `vMAJOR.MINOR.PATCH` numerically, not lexicographically;
-- include prereleases in version discovery;
-- select `macos-arm64` DMG on Apple Silicon and `macos-x86_64` DMG on Intel;
-- if no matching DMG exists, still offer the release page;
-- update checking is read-only and unauthenticated;
-- never auto-install or silently replace the running app.
-
-`AppBuildInfo` reads `CFBundleShortVersionString` / `CFBundleVersion`; packaging injects release values.
+The About window performs automatic-on-open and manual update checking using `GET /repos/syjsion/asdf-gui/releases`, not `/releases/latest`, because current ad-hoc releases are prereleases. Compare `vMAJOR.MINOR.PATCH` numerically, ignore drafts, include prereleases, select architecture-specific DMGs, and never auto-install or silently replace the running app.
 
 ## Persistence
 
@@ -351,17 +333,16 @@ Persisted small preferences:
 Not persisted:
 
 - `.tool-versions` contents;
-- shell configuration contents or integration plans;
-- plugin/runtime state;
-- version catalogs;
-- active task/bootstrap state/logs;
-- removal-impact snapshots;
+- shell configuration contents/plans;
+- plugin/runtime state and catalogs;
+- resolution/shim results;
+- active task logs;
 - diagnostics;
 - update-check responses.
 
 ## Distribution contract
 
-The project stays SwiftPM-based. Do not add an Xcode project solely for packaging unless a future capability genuinely requires it.
+The project stays SwiftPM-based. Do not add an Xcode project solely for packaging unless a future capability requires it.
 
 Bundle metadata:
 
@@ -372,12 +353,12 @@ Bundle metadata:
 - app icon generated by `scripts/generate-app-icon.py`;
 - localizations: English + Simplified Chinese.
 
-Release workflow modes:
+Release modes:
 
 - `adhoc`: no Apple credentials; prerelease DMGs; no notarization/Gatekeeper trust claim.
-- `developer-id`: all required Apple credentials present; Developer ID signing + Hardened Runtime + timestamp + `notarytool` + stapling.
+- `developer-id`: all Apple credentials present; Developer ID + Hardened Runtime + timestamp + `notarytool` + stapling.
 
-Partial Apple credentials fail closed. Both arm64 and x86_64 artifacts must succeed. `publish/vMAJOR.MINOR.PATCH` may be created from a tested `main` commit to trigger a release when a tag-writing tool is unavailable. See `docs/RELEASING.md`.
+Partial Apple credentials fail closed. Both arm64 and x86_64 artifacts must succeed. See `docs/RELEASING.md`.
 
 ## Roadmap
 
@@ -393,10 +374,10 @@ Partial Apple credentials fail closed. Both arm64 and x86_64 artifacts must succ
 - [x] Parse `.tool-versions` + fallbacks.
 - [x] Required vs installed state.
 - [x] Install Missing with logs/cancel.
-- [x] Card-based layout polish.
-- [x] Visual `.tool-versions` management without raw text editing.
+- [x] Card-based layout.
+- [x] Visual `.tool-versions` management.
 - [x] Add/edit/reorder through `asdf set`.
-- [x] Guarded delete-one-tool fallback preserving unrelated content/comments/permissions.
+- [x] Guarded delete-one-tool fallback.
 
 ### Phase 3 — Version management
 - [x] Installed/latest/available queries.
@@ -416,20 +397,28 @@ Partial Apple credentials fail closed. Both arm64 and x86_64 artifacts must succ
 - [x] arm64 + x86_64 artifacts/checksums.
 - [x] ad-hoc prerelease mode.
 - [x] optional Developer ID/notarization mode.
-- [x] tag/publish-branch release automation.
-- [ ] smoke-test a downloaded ad-hoc prerelease on a real Mac.
+- [x] release automation.
+- [ ] smoke-test downloaded ad-hoc build on a real Mac.
 - [ ] later smoke-test a notarized release.
 
 ### Phase 6 — Onboarding and product hardening
-- [x] missing-asdf setup + verified asdf installer.
-- [x] Shell Integration with guarded marker-scoped writes.
-- [x] Getting Started guide.
-- [x] English / Simplified Chinese in-app language switch.
-- [x] About/version/update-check experience.
+- [x] missing-asdf setup + verified installer.
+- [x] Shell Integration.
+- [x] Getting Started.
+- [x] English / Simplified Chinese switch.
+- [x] About/version/update check.
 - [x] Projects layout repair.
 - [x] Versions installed-first UX.
+- [x] Project search/sort.
 - [ ] Shell completion helper / more shells if deliberately designed.
-- [ ] Project search/sort and broader macOS UI polish.
+
+### Phase 7 — Resolution and discovery
+- [x] Project/Home effective version resolver via `asdf current`.
+- [x] Directory-aware executable resolution via `asdf which`.
+- [x] Shim provider explorer via `asdf shimversions`.
+- [x] Searchable plugin discovery via `asdf plugin list all`.
+- [ ] Explain legacy-version-file resolution when enabled.
+- [ ] Optional constrained environment inspector around `asdf env`.
 
 ## Codex working agreement
 
@@ -439,39 +428,34 @@ When using Codex on this repository:
 2. Preserve SwiftUI/Foundation architecture unless explicitly changing it.
 3. Keep normal asdf CLI construction/parsing in `AsdfService` and process handling in `AsdfCommandRunner`.
 4. Keep project reads in `ProjectService`; do not introduce a generic project-file writer.
-5. Put deterministic decisions in pure helpers and test them.
+5. Put deterministic decisions/parsers in pure helpers and test them.
 6. Reuse the global mutation gate for every new write/bootstrap/configuration workflow.
 7. Reuse streaming/cancellation for potentially long commands.
-8. Never expose a raw editable `.tool-versions` text editor as the normal management path.
-9. For `.tool-versions` add/edit/reorder, use `asdf set` in the project directory.
-10. Preserve `ToolVersionsMutationService` as a delete-one-tool-only exception; never use it for normal edits.
-11. Deletion must keep the duplicate-entry check, target-version race check, unrelated-content preservation, atomic write, and permission preservation.
-12. Never fake deletion by setting a tool to `system` or passing an empty version list.
-13. Show known impact before destructive runtime/plugin removal.
-14. Never auto-install plugins as a side effect of runtime installation.
-15. Keep every version catalog lazy and installed-first, including project configuration UI.
-16. Preserve the verified asdf bootstrap contract; no `curl | sh`, no skipped checksum verification.
-17. Preserve Shell Integration preview/confirmation, marker-scoped edits, and race checks.
-18. Keep localization resources and in-app language selection synchronized with new user-visible UI.
-19. Dynamic visible strings must handle both English and Simplified Chinese where literal localization cannot resolve them.
-20. App update checking includes prereleases and remains read-only; never silently update the app.
-21. Preserve SwiftPM packaging, localization packaging, and both release architectures.
-22. Never commit Apple credentials; preserve `adhoc` and `developer-id` modes and fail on partial credentials.
-23. Never claim ad-hoc artifacts are notarized or Gatekeeper-trusted.
-24. Update this document when architecture, localization, update-check, project mutation behavior, commands, persistence, safety, or distribution changes.
-25. Run `swift test` and package verification before considering a change complete.
+8. Never expose a raw editable `.tool-versions` editor as the normal path.
+9. For `.tool-versions` add/edit/reorder use `asdf set`; keep direct mutation delete-only and guarded.
+10. Show known impact before destructive runtime/plugin removal.
+11. Keep version catalogs lazy and installed-first.
+12. Keep plugin discovery lazy; use catalog Git URLs when available.
+13. Preserve directory context for `asdf current` and directory-aware `which`.
+14. Preserve `parseCurrent` tests for fallback values and source paths containing spaces.
+15. Do not add unrestricted `asdf exec` merely to increase command coverage.
+16. Preserve verified asdf bootstrap and Shell Integration safety contracts.
+17. Keep English and Simplified Chinese paths working for every new major UI.
+18. App update checking includes prereleases and remains read-only.
+19. Preserve SwiftPM packaging and both release architectures.
+20. Never commit Apple credentials or claim ad-hoc artifacts are notarized.
+21. Update this document when architecture, commands, mutation policy, localization, persistence, or distribution changes.
+22. Run `swift test` and package verification before considering a change complete.
 
 Suggested Codex prompt:
 
 ```text
 Read docs/DEVELOPMENT.md first; for release work also read docs/RELEASING.md.
-Preserve the SwiftUI/Foundation architecture, global mutation gate, localization,
-installed-first version catalogs, and distribution contracts. Normal .tool-versions
-add/edit/reorder must run asdf set in the project directory. The only direct
-.tool-versions mutation is ToolVersionsMutationService deleting exactly one tool
-entry because asdf has no delete-entry command; preserve its race/duplicate/content/
-permission safeguards. Add tests, run swift test and package verification, and update
-this document when behavior or architecture changes.
+Preserve SwiftUI/Foundation, the global mutation gate, bilingual UI, installed-first
+catalogs, guarded .tool-versions mutation, directory-aware resolution, and release
+contracts. Prefer explanatory typed asdf workflows over raw CLI mirroring. Do not add
+an unrestricted asdf exec terminal. Add tests, run swift test and package verification,
+and update DEVELOPMENT.md when behavior or architecture changes.
 ```
 
 ## Design principles
@@ -479,8 +463,8 @@ this document when behavior or architecture changes.
 - Explain state instead of exposing raw CLI buttons.
 - Prefer project-centric workflows.
 - Preserve asdf and `.tool-versions` as sources of truth.
-- Prefer asdf's own commands for configuration writes whenever the CLI supports the operation.
-- Make direct file mutations narrow, explicit, guarded, tested, and reversible where practical.
+- Prefer asdf's own commands for writes whenever the CLI supports the operation.
+- Make direct file mutations narrow, explicit, guarded, and tested.
 - Keep failure output visible and actionable.
 - Make destructive effects explicit before execution.
 - Favor native macOS layout behavior over web-style abstractions.
