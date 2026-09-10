@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'publish/v*'
 
 permissions:
   contents: read
@@ -22,37 +24,69 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate tag and release secrets
+      - name: Resolve release version and signing mode
         env:
           P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
-          SIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
+          SIGN_IDENTITY_SECRET: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
           NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_P8_BASE64 }}
           NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release tags must use vMAJOR.MINOR.PATCH." >&2
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME#publish/}"
+          fi
+
+          VERSION="${RELEASE_TAG#v}"
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags/branches must resolve to vMAJOR.MINOR.PATCH." >&2
             exit 64
           fi
-          for value in P12_BASE64 P12_PASSWORD SIGN_IDENTITY NOTARY_KEY_BASE64 NOTARY_KEY_ID NOTARY_ISSUER_ID; do
-            if [[ -z "${!value}" ]]; then
-              echo "Required release secret is missing: $value" >&2
-              exit 78
-            fi
-          done
+
           if [[ "$(uname -m)" != "${{ matrix.arch }}" ]]; then
             echo "Runner architecture mismatch: expected ${{ matrix.arch }}, got $(uname -m)" >&2
             exit 65
           fi
+
+          values=(P12_BASE64 P12_PASSWORD SIGN_IDENTITY_SECRET NOTARY_KEY_BASE64 NOTARY_KEY_ID NOTARY_ISSUER_ID)
+          configured=0
+          for value in "${values[@]}"; do
+            if [[ -n "${!value}" ]]; then
+              configured=$((configured + 1))
+            fi
+          done
+
+          if [[ "$configured" -eq 0 ]]; then
+            RELEASE_SIGNING_MODE="adhoc"
+            SIGN_IDENTITY="-"
+            echo "No Apple signing credentials configured. Building an ad-hoc signed prerelease."
+          elif [[ "$configured" -eq "${#values[@]}" ]]; then
+            RELEASE_SIGNING_MODE="developer-id"
+            SIGN_IDENTITY="$SIGN_IDENTITY_SECRET"
+            echo "All Apple signing credentials configured. Building a Developer ID notarized release."
+          else
+            echo "Apple release credentials are partially configured ($configured/${#values[@]})." >&2
+            echo "Configure all six documented secrets or remove them all to use ad-hoc mode." >&2
+            exit 78
+          fi
+
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "RELEASE_SIGNING_MODE=$RELEASE_SIGNING_MODE" >> "$GITHUB_ENV"
+          echo "SIGN_IDENTITY=$SIGN_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Import Developer ID certificate
         env:
           P12_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_P12_BASE64 }}
           P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_P12_PASSWORD }}
         run: |
+          if [[ "$RELEASE_SIGNING_MODE" != "developer-id" ]]; then
+            echo "Skipping Developer ID import in ad-hoc mode."
+            exit 0
+          fi
+
           CERTIFICATE_PATH="$RUNNER_TEMP/developer-id.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/asdf-gui-build.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
@@ -78,6 +112,11 @@ jobs:
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
         run: |
+          if [[ "$RELEASE_SIGNING_MODE" != "developer-id" ]]; then
+            echo "Skipping notarization key setup in ad-hoc mode."
+            exit 0
+          fi
+
           APPLE_NOTARY_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_NOTARY_KEY_ID}.p8"
           export APPLE_NOTARY_KEY_PATH NOTARY_KEY_BASE64
           python3 - <<'PY'
@@ -91,38 +130,48 @@ jobs:
           echo "APPLE_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID" >> "$GITHUB_ENV"
           echo "APPLE_NOTARY_ISSUER_ID=$APPLE_NOTARY_ISSUER_ID" >> "$GITHUB_ENV"
 
-      - name: Build and sign app
+      - name: Build app
         env:
           OUTPUT_DIR: ${{ github.workspace }}/dist
           BUILD_NUMBER: ${{ github.run_number }}
-          SIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
         run: bash scripts/build-app.sh
 
-      - name: Notarize and staple app
+      - name: Notarize and staple app when Developer ID is available
         run: |
+          if [[ "$RELEASE_SIGNING_MODE" != "developer-id" ]]; then
+            echo "Skipping notarization in ad-hoc mode."
+            exit 0
+          fi
+
           APP_PATH="dist/asdf GUI.app"
           APP_ZIP="$RUNNER_TEMP/asdf-gui-app.zip"
           ditto -c -k --keepParent "$APP_PATH" "$APP_ZIP"
           bash scripts/notarize.sh "$APP_ZIP" "$APP_PATH"
           spctl --assess --type execute --verbose=4 "$APP_PATH"
 
-      - name: Create and sign DMG
-        env:
-          SIGN_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION_IDENTITY }}
+      - name: Create DMG
         run: |
-          DMG_PATH="dist/asdf-gui-${VERSION}-macos-${{ matrix.arch }}.dmg"
+          DMG_PATH="dist/asdf-gui-${VERSION}-macos-${{ matrix.arch }}-${RELEASE_SIGNING_MODE}.dmg"
           bash scripts/create-dmg.sh "dist/asdf GUI.app" "$DMG_PATH"
           echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
 
-      - name: Notarize, staple, and verify DMG
+      - name: Verify DMG and optionally notarize
         run: |
-          bash scripts/notarize.sh "$DMG_PATH" "$DMG_PATH"
+          if [[ "$RELEASE_SIGNING_MODE" == "developer-id" ]]; then
+            bash scripts/notarize.sh "$DMG_PATH" "$DMG_PATH"
+          fi
+
           bash scripts/verify-package.sh "dist/asdf GUI.app" "$DMG_PATH"
-          spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH"
+
+          if [[ "$RELEASE_SIGNING_MODE" == "developer-id" ]]; then
+            spctl --assess --type open --context context:primary-signature --verbose=4 "$DMG_PATH"
+          else
+            echo "Ad-hoc package verified. Gatekeeper trust is intentionally not expected without Developer ID/notarization."
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: asdf-gui-${{ matrix.arch }}
+          name: asdf-gui-${{ matrix.arch }}-${{ env.RELEASE_SIGNING_MODE }}
           path: ${{ env.DMG_PATH }}
           if-no-files-found: error
 
@@ -137,19 +186,62 @@ jobs:
           pattern: asdf-gui-*
           path: dist
           merge-multiple: true
-      - name: Generate checksums
+
+      - name: Resolve release tag
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            RELEASE_TAG="${GITHUB_REF_NAME#publish/}"
+          fi
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Generate checksums and release notes
         run: |
           cd dist
           sha256sum *.dmg > SHA256SUMS.txt
           cat SHA256SUMS.txt
+
+          if compgen -G '*-adhoc.dmg' > /dev/null; then
+            cat > RELEASE_NOTES.md <<'EOF'
+          ## Ad-hoc macOS build
+
+          This prerelease is built without an Apple Developer ID certificate or notarization because the project currently does not have Apple Developer Program credentials.
+
+          The app bundle is ad-hoc signed so its bundle integrity can be verified, but macOS Gatekeeper will not treat it as a trusted notarized app. On first launch, use **Control-click / right-click the app → Open → Open** to explicitly approve it.
+
+          Two DMGs are provided:
+          - `arm64` for Apple Silicon Macs
+          - `x86_64` for Intel Macs
+
+          Verify your download with `SHA256SUMS.txt` if desired.
+          EOF
+          else
+            cat > RELEASE_NOTES.md <<'EOF'
+          ## Notarized macOS build
+
+          This release is signed with Developer ID, notarized by Apple, and distributed as architecture-specific DMGs for Apple Silicon and Intel Macs.
+
+          Verify your download with `SHA256SUMS.txt` if desired.
+          EOF
+          fi
+
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            dist/*.dmg \
-            dist/SHA256SUMS.txt \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --generate-notes \
-            --title "asdf GUI $GITHUB_REF_NAME"
+          args=(
+            release create "$RELEASE_TAG"
+            dist/*.dmg
+            dist/SHA256SUMS.txt
+            --repo "$GITHUB_REPOSITORY"
+            --target "$GITHUB_SHA"
+            --notes-file dist/RELEASE_NOTES.md
+            --title "asdf GUI $RELEASE_TAG"
+          )
+
+          if compgen -G 'dist/*-adhoc.dmg' > /dev/null; then
+            args+=(--prerelease)
+          fi
+
+          gh "${args[@]}"
