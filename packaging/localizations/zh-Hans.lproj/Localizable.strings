@@ -1,0 +1,212 @@
+/* Navigation */
+"Overview" = "概览";
+"Projects" = "项目";
+"Versions" = "版本";
+"Plugins" = "插件";
+"Environment" = "环境";
+"Local asdf status and installation details" = "本机 asdf 状态与安装信息";
+"Refresh" = "刷新";
+"Executable" = "可执行文件";
+"Not found" = "未找到";
+"Managed projects" = "已管理项目";
+"asdf unavailable" = "asdf 不可用";
+
+/* Projects */
+"Compare each project's .tool-versions with runtimes installed by asdf." = "对比每个项目的 .tool-versions 与 asdf 已安装运行时。";
+"Add Project" = "添加项目";
+"Refresh Projects" = "刷新项目";
+"No projects" = "暂无项目";
+"Add project folders to inspect their .tool-versions files." = "添加项目文件夹以检查其中的 .tool-versions。";
+"No .tool-versions in this folder" = "此文件夹中没有 .tool-versions";
+".tool-versions contains no tool entries." = ".tool-versions 中没有工具条目。";
+"Install Missing" = "安装缺失版本";
+"Install Task" = "安装任务";
+"Cancel" = "取消";
+"Close" = "关闭";
+"Installed" = "已安装";
+"Missing" = "缺失";
+"System" = "系统";
+"Local path" = "本地路径";
+"Plugin missing" = "插件缺失";
+"Unknown" = "未知";
+"fallback" = "回退";
+"Remove from asdf GUI. Files are not deleted." = "仅从 asdf GUI 移除，不会删除文件。";
+"Install the first missing version for each unsatisfied tool requirement." = "为每个未满足的工具需求安装第一个缺失版本。";
+
+/* Versions */
+"Browse, install, and uninstall versions for each installed plugin." = "浏览、安装和卸载每个已安装插件的版本。";
+"A project install task is running. Version actions are temporarily disabled." = "项目安装任务正在运行，版本操作暂时不可用。";
+"No plugins" = "暂无插件";
+"Install an asdf plugin before browsing runtime versions." = "请先安装 asdf 插件，再浏览运行时版本。";
+"Filter versions" = "筛选版本";
+"Scope" = "范围";
+"All" = "全部";
+"Latest" = "最新";
+"Available" = "可用";
+"No installed versions" = "没有已安装版本";
+"No matching versions" = "没有匹配版本";
+"No versions were returned for this plugin." = "该插件没有返回可用版本。";
+"Try a different search term." = "请尝试其他搜索词。";
+"Version" = "版本";
+"Status" = "状态";
+"Action" = "操作";
+"Install" = "安装";
+"Uninstall" = "卸载";
+"Select a plugin" = "选择插件";
+"Choose an installed asdf plugin to browse its versions." = "选择一个已安装的 asdf 插件以浏览版本。";
+"Uninstall version?" = "卸载此版本？";
+"Version Task" = "版本任务";
+
+/* Plugins */
+"Plugin" = "插件";
+"Repository" = "仓库";
+"Install an asdf plugin or refresh the environment." = "安装一个 asdf 插件或刷新环境。";
+"Plugin Manager" = "插件管理器";
+"Add, update, and safely remove asdf plugins." = "添加、更新并安全移除 asdf 插件。";
+"Add Plugin" = "添加插件";
+"Update All" = "全部更新";
+"No plugins installed" = "尚未安装插件";
+"Add a plugin by short name or, preferably, by its Git URL." = "可使用短名称添加插件，更推荐使用 Git URL。";
+"Short-name repository" = "短名称仓库";
+"Actions" = "操作";
+"Update" = "更新";
+"Remove" = "移除";
+"Plugin name" = "插件名称";
+"Git URL (recommended)" = "Git URL（推荐）";
+"Leaving Git URL empty uses asdf's short-name repository. A Git URL is more explicit and independent of that index." = "Git URL 留空时会使用 asdf 的短名称索引。使用 Git URL 更明确，也不依赖该索引。";
+"Add" = "添加";
+"Plugin Task" = "插件任务";
+"Installed versions to remove" = "将移除的已安装版本";
+"No installed runtime versions were reported." = "未检测到已安装运行时版本。";
+"Managed project impact" = "对已管理项目的影响";
+"No managed project currently references this plugin." = "当前没有已管理项目引用此插件。";
+"Remove Plugin" = "移除插件";
+
+/* Diagnostics */
+"Diagnostics" = "诊断";
+"Inspect paths, shims, and environment information without remembering asdf commands." = "无需记忆 asdf 命令即可检查路径、shims 与环境信息。";
+"Diagnostic" = "诊断项";
+"Info" = "信息";
+"Where" = "安装位置";
+"Which" = "命令位置";
+"Reshim" = "重建 Shims";
+"Installed versions" = "已安装版本";
+"Copy Output" = "复制输出";
+"Copy Diagnostic Report" = "复制诊断报告";
+"Run a diagnostic to see its output here." = "运行诊断后，输出会显示在这里。";
+"Output" = "输出";
+"Print OS, shell, and asdf debug information." = "输出操作系统、Shell 与 asdf 调试信息。";
+"Run Info" = "运行 Info";
+"Current" = "当前";
+"Find Install Path" = "查找安装路径";
+"Command" = "命令";
+"Resolve Executable" = "解析可执行文件";
+"No installed versions" = "没有已安装版本";
+"Tool" = "工具";
+
+/* Shell integration */
+"Shell Integration" = "Shell 集成";
+"Make the same asdf installation and its shims available in Terminal." = "让终端使用与 GUI 相同的 asdf 安装及其 shims。";
+"Shell" = "Shell";
+"Configuration file" = "配置文件";
+"asdf executable" = "asdf 可执行文件";
+"Integration" = "集成状态";
+"Managed block preview" = "托管配置块预览";
+"asdf GUI only adds or replaces the block below. Existing content outside these markers is left unchanged." = "asdf GUI 只会添加或替换下面的配置块，标记之外的现有内容不会被修改。";
+"Refresh Preview" = "刷新预览";
+"Remove Integration" = "移除集成";
+"Update Integration" = "更新集成";
+"Configure Shell" = "配置 Shell";
+"Configured. Open a new terminal session for PATH changes to take effect." = "已配置。请打开新的终端会话以使 PATH 更改生效。";
+"Integration unavailable" = "无法配置集成";
+"asdf is not ready" = "asdf 尚未就绪";
+"Install or select asdf before configuring your shell." = "请先安装或选择 asdf，再配置 Shell。";
+"Configure shell?" = "配置 Shell？";
+"Configure" = "配置";
+"Remove shell integration?" = "移除 Shell 集成？";
+"Not configured" = "未配置";
+"Configured" = "已配置";
+"Update available" = "需要更新";
+
+/* Getting started */
+"Getting Started" = "开始使用";
+"A short path from a working asdf installation to your first managed project." = "从可用的 asdf 安装快速开始管理第一个项目。";
+"asdf is ready" = "asdf 已就绪";
+"Connect your shell" = "连接 Shell";
+"Add a plugin" = "添加插件";
+"Install a runtime" = "安装运行时";
+"Add your first project" = "添加第一个项目";
+"Shell Integration…" = "Shell 集成…";
+"Open Plugin Manager…" = "打开插件管理器…";
+"Manage Plugins…" = "管理插件…";
+"What asdf GUI will not do automatically" = "asdf GUI 不会自动做这些事情";
+"It will not silently edit shell files; Shell Integration requires an explicit confirmation." = "不会静默修改 Shell 文件；Shell 集成需要明确确认。";
+"It will not auto-install plugins when a project references a missing plugin." = "项目引用缺失插件时不会自动安装插件。";
+"It will not rewrite .tool-versions unless you explicitly use a version-selection action." = "除非明确执行版本选择操作，否则不会改写 .tool-versions。";
+
+/* asdf setup */
+"Checking for asdf…" = "正在检查 asdf…";
+"asdf is required" = "需要安装 asdf";
+"asdf GUI could not find a usable asdf executable on this Mac." = "asdf GUI 在这台 Mac 上没有找到可用的 asdf 可执行文件。";
+"Install from the official asdf release" = "从官方 asdf Release 安装";
+"Downloads the latest stable macOS archive from asdf-vm/asdf on GitHub." = "从 GitHub 的 asdf-vm/asdf 下载最新稳定 macOS 压缩包。";
+"Selects Apple Silicon or Intel automatically for this app build." = "根据当前应用架构自动选择 Apple Silicon 或 Intel 版本。";
+"Requires the release asset SHA-256 digest and verifies it before extraction." = "要求 Release 资源提供 SHA-256，并在解压前完成校验。";
+"Installs only to ~/.local/bin/asdf. No sudo and no Homebrew are required." = "仅安装到 ~/.local/bin/asdf，无需 sudo 或 Homebrew。";
+"Does not edit ~/.zshrc or other shell configuration files." = "不会自动修改 ~/.zshrc 或其他 Shell 配置文件。";
+"Install asdf" = "安装 asdf";
+"Refresh Detection" = "重新检测";
+"Already installed somewhere else?" = "已经安装在其他位置？";
+"asdf Installation" = "asdf 安装";
+"Installed at" = "安装位置";
+"Detected version" = "检测到的版本";
+
+/* Version selection */
+"Set Runtime Version" = "设置运行时版本";
+"Choose an installed asdf plugin and set an exact project or Home version without editing .tool-versions by hand." = "选择已安装的 asdf 插件，并为项目或 Home 设置精确版本，无需手动编辑 .tool-versions。";
+"Project" = "项目";
+"Home" = "Home";
+"Add a managed project from the Projects screen first." = "请先在项目页面添加一个已管理项目。";
+"Runtime" = "运行时";
+"Current project setting" = "当前项目设置";
+"Not set locally" = "未在项目中设置";
+"Apply" = "应用";
+"Change configured version?" = "修改已配置版本？";
+
+/* Settings */
+"Settings" = "设置";
+"Language" = "语言";
+"Interface language" = "界面语言";
+"Language changes apply immediately." = "语言切换会立即生效。";
+"asdf executable" = "asdf 可执行文件";
+"Active path" = "当前路径";
+"Not detected" = "未检测到";
+"Selection" = "选择方式";
+"Automatic" = "自动";
+"Custom" = "自定义";
+"Choose asdf…" = "选择 asdf…";
+"Use Automatic Detection" = "使用自动检测";
+"The selected file must be executable. Automatic detection checks common Homebrew, ~/.local/bin, and ~/go/bin locations." = "所选文件必须可执行。自动检测会检查常见 Homebrew、~/.local/bin 与 ~/go/bin 路径。";
+
+/* About and updates */
+"About asdf GUI" = "关于 asdf GUI";
+"Version" = "版本";
+"Build" = "构建号";
+"Native macOS GUI for asdf, built with SwiftUI." = "使用 SwiftUI 构建的原生 macOS asdf 图形界面。";
+"Project on GitHub" = "GitHub 项目";
+"Check for Updates" = "检查更新";
+"Checking for updates…" = "正在检查更新…";
+"You're up to date." = "当前已是最新版本。";
+"A newer version is available." = "发现新版本。";
+"Download Update" = "下载更新";
+"Open Release Page" = "打开 Release 页面";
+"Update check failed" = "检查更新失败";
+"Current app version" = "当前应用版本";
+"Latest release" = "最新 Release";
+"Prerelease" = "预发布版本";
+
+/* Menus */
+"Getting Started…" = "开始使用…";
+"Set Runtime Version…" = "设置运行时版本…";
+"Diagnostics…" = "诊断…";
+"About asdf GUI…" = "关于 asdf GUI…";
