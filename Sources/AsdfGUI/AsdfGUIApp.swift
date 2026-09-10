@@ -8,7 +8,7 @@ struct AsdfGUIApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootContentView()
                 .environment(model)
                 .environment(bootstrapModel)
                 .frame(minWidth: 900, minHeight: 580)
