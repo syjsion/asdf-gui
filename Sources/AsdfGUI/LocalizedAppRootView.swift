@@ -4,15 +4,17 @@ private enum LocalizedSidebarItem: String, CaseIterable, Identifiable {
     case overview
     case projects
     case versions
+    case resolution
     case plugins
 
     var id: String { rawValue }
 
-    var title: LocalizedStringKey {
+    var titleKey: String {
         switch self {
         case .overview: "Overview"
         case .projects: "Projects"
         case .versions: "Versions"
+        case .resolution: "Resolution"
         case .plugins: "Plugins"
         }
     }
@@ -22,6 +24,7 @@ private enum LocalizedSidebarItem: String, CaseIterable, Identifiable {
         case .overview: "gauge.with.dots.needle.67percent"
         case .projects: "folder"
         case .versions: "square.stack.3d.up"
+        case .resolution: "arrow.triangle.branch"
         case .plugins: "shippingbox"
         }
     }
@@ -33,7 +36,12 @@ struct LocalizedAppRootView: View {
     @Environment(AsdfBootstrapModel.self) private var bootstrap
     @Environment(\.openWindow) private var openWindow
     @AppStorage("asdfGUI.hasPresentedGettingStarted") private var hasPresentedGettingStarted = false
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var selection: LocalizedSidebarItem? = .overview
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     var body: some View {
         Group {
@@ -63,8 +71,12 @@ struct LocalizedAppRootView: View {
     private var navigation: some View {
         NavigationSplitView {
             List(LocalizedSidebarItem.allCases, selection: $selection) { item in
-                Label(item.title, systemImage: item.icon)
-                    .tag(item)
+                Label {
+                    Text(language.localized(item.titleKey))
+                } icon: {
+                    Image(systemName: item.icon)
+                }
+                .tag(item)
             }
             .navigationTitle("asdf GUI")
             .navigationSplitViewColumnWidth(min: 170, ideal: 205, max: 240)
@@ -73,6 +85,7 @@ struct LocalizedAppRootView: View {
             case .overview: OverviewView()
             case .projects: ProjectsPolishedView()
             case .versions: VersionsPolishedView()
+            case .resolution: ResolutionView()
             case .plugins: PluginsView()
             }
         }

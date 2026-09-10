@@ -1,11 +1,58 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+private enum ProjectSortOrder: String, CaseIterable, Identifiable {
+    case name
+    case path
+    case toolCount
+
+    var id: String { rawValue }
+
+    var titleKey: String {
+        switch self {
+        case .name: "Name"
+        case .path: "Path"
+        case .toolCount: "Tool count"
+        }
+    }
+}
+
 @MainActor
 struct ProjectsPolishedView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var isAddingProject = false
     @State private var importerError: String?
+    @State private var searchText = ""
+    @State private var sortOrder: ProjectSortOrder = .name
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
+
+    private var displayedSnapshots: [ProjectSnapshot] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let filtered = model.projectSnapshots.filter { snapshot in
+            query.isEmpty
+                || snapshot.project.name.localizedCaseInsensitiveContains(query)
+                || snapshot.project.path.localizedCaseInsensitiveContains(query)
+                || snapshot.requirements.contains { $0.tool.localizedCaseInsensitiveContains(query) }
+        }
+
+        return filtered.sorted { lhs, rhs in
+            switch sortOrder {
+            case .name:
+                return lhs.project.name.localizedCaseInsensitiveCompare(rhs.project.name) == .orderedAscending
+            case .path:
+                return lhs.project.path.localizedCaseInsensitiveCompare(rhs.project.path) == .orderedAscending
+            case .toolCount:
+                if lhs.requirements.count == rhs.requirements.count {
+                    return lhs.project.name.localizedCaseInsensitiveCompare(rhs.project.name) == .orderedAscending
+                }
+                return lhs.requirements.count > rhs.requirements.count
+            }
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,6 +66,19 @@ struct ProjectsPolishedView: View {
                 Spacer()
                 if model.isRefreshingVersionStatus {
                     ProgressView().controlSize(.small)
+                }
+                Menu {
+                    Picker(language.localized("Sort projects"), selection: $sortOrder) {
+                        ForEach(ProjectSortOrder.allCases) { order in
+                            Text(language.localized(order.titleKey)).tag(order)
+                        }
+                    }
+                } label: {
+                    Label {
+                        Text(language.localized("Sort"))
+                    } icon: {
+                        Image(systemName: "arrow.up.arrow.down")
+                    }
                 }
                 Button("Add Project", systemImage: "plus") {
                     isAddingProject = true
@@ -43,10 +103,13 @@ struct ProjectsPolishedView: View {
                     description: Text("Add project folders to inspect their .tool-versions files.")
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if displayedSnapshots.isEmpty {
+                ContentUnavailableView.search(text: searchText)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
-                        ForEach(model.projectSnapshots) { snapshot in
+                        ForEach(displayedSnapshots) { snapshot in
                             ProjectCard(snapshot: snapshot)
                         }
                     }
@@ -55,6 +118,7 @@ struct ProjectsPolishedView: View {
             }
         }
         .padding(28)
+        .searchable(text: $searchText, prompt: language.localized("Search projects, paths, or tools"))
         .toolbar {
             Button("Refresh Projects", systemImage: "arrow.clockwise") {
                 Task { await model.reloadProjects() }

@@ -37,12 +37,14 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
 
         if let path = Bundle.main.path(forResource: "zh-Hans", ofType: "lproj"),
            let bundle = Bundle(path: path) {
-            return bundle.localizedString(forKey: key, value: key, table: nil)
+            let value = bundle.localizedString(forKey: key, value: key, table: nil)
+            if value != key {
+                return value
+            }
         }
 
-        // SwiftPM command-line runs do not have a normal .app Resources directory.
-        // Keep key navigation/settings/management text useful there as a fallback;
-        // packaged apps use the complete Localizable.strings table copied into Resources.
+        // New visible keys can fall back here before the packaged strings table is
+        // consolidated. This also keeps SwiftPM command-line runs bilingual.
         return Self.fallbackChinese[key] ?? key
     }
 
@@ -54,11 +56,19 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "Overview": "概览",
         "Projects": "项目",
         "Versions": "版本",
+        "Resolution": "解析",
         "Plugins": "插件",
         "Settings": "设置",
         "Language": "语言",
         "Refresh": "刷新",
+        "Close": "关闭",
         "Add Project": "添加项目",
+        "Search projects, paths, or tools": "搜索项目、路径或工具",
+        "Sort": "排序",
+        "Sort projects": "项目排序",
+        "Name": "名称",
+        "Path": "路径",
+        "Tool count": "工具数量",
         "Manage .tool-versions": "管理 .tool-versions",
         "Configured tools": "已配置工具",
         "Add Tool": "添加工具",
@@ -70,16 +80,34 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "Add Version": "添加版本",
         "Save with asdf set": "使用 asdf set 保存",
         "Installed": "已安装",
+        "Missing": "缺失",
         "Available": "可用",
         "Latest": "最新",
         "Install": "安装",
         "Uninstall": "卸载",
+        "Discover": "发现",
+        "Discover Plugins": "发现插件",
+        "Search plugins": "搜索插件",
+        "No plugin catalog": "没有插件目录",
+        "No matching plugins": "没有匹配插件",
         "About asdf GUI": "关于 asdf GUI",
         "Check for Updates": "检查更新",
         "Getting Started": "开始使用",
         "Plugin Manager": "插件管理器",
         "Diagnostics": "诊断",
         "Shell Integration": "Shell 集成",
+        "Resolve Versions": "解析版本",
+        "Effective versions": "生效版本",
+        "Context": "上下文",
+        "Directory": "目录",
+        "All tools": "全部工具",
+        "Source": "来源",
+        "No resolution results": "暂无解析结果",
+        "Shim & command explorer": "Shim 与命令解析器",
+        "Command, e.g. node, npm, python, yarn": "命令，例如 node、npm、python、yarn",
+        "Resolve Command": "解析命令",
+        "Resolved executable": "实际可执行文件",
+        "Shim providers": "Shim 提供者",
         "Project configuration unavailable": "项目配置不可用",
         "Project unavailable": "项目不可用",
         "The project is no longer in the managed-project list.": "该项目已不在管理列表中。",
@@ -88,6 +116,13 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "No .tool-versions yet": "尚无 .tool-versions",
         "Add a tool and choose one or more versions. asdf GUI will write the configuration through asdf set.": "添加工具并选择一个或多个版本，asdf GUI 会通过 asdf set 写入配置。",
         "All catalog versions are already in the fallback chain.": "版本目录中的版本都已加入回退链。",
-        "No versions match this filter.": "没有版本匹配此筛选条件。"
+        "No versions match this filter.": "没有版本匹配此筛选条件。",
+        "Explain which runtime version and executable asdf resolves in a specific project context.": "解释 asdf 在指定项目上下文中最终解析到的运行时版本和可执行文件。",
+        "Choose a context and resolve all tools or one installed plugin.": "选择上下文后解析全部工具或单个已安装插件。",
+        "Search the official asdf short-name plugin catalog and install without memorizing plugin names.": "搜索 asdf 官方短名称插件目录，无需记住插件名即可安装。",
+        "Refresh to load asdf plugin list all.": "刷新以加载 asdf plugin list all。",
+        "Try another plugin name or repository URL.": "尝试其他插件名或仓库 URL。",
+        "Add, discover, update, and safely remove asdf plugins.": "发现、添加、更新并安全移除 asdf 插件。",
+        "Discover the official catalog, or add a plugin by short name / Git URL.": "可以浏览官方目录，或通过短名称 / Git URL 添加插件。"
     ]
 }

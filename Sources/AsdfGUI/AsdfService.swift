@@ -22,6 +22,29 @@ enum AsdfVersionSetScope: Hashable {
     case home
 }
 
+struct AsdfCurrentEntry: Identifiable, Hashable, Sendable {
+    let name: String
+    let version: String
+    let source: String?
+    let isInstalled: Bool
+
+    var id: String { "\(name)|\(version)|\(source ?? "")" }
+}
+
+struct AsdfShimProvider: Identifiable, Hashable, Sendable {
+    let plugin: String
+    let version: String
+
+    var id: String { "\(plugin)@\(version)" }
+}
+
+struct AsdfPluginCatalogEntry: Identifiable, Hashable, Sendable {
+    let name: String
+    let url: String?
+
+    var id: String { name }
+}
+
 struct AsdfService {
     private let runner = AsdfCommandRunner()
 
@@ -58,6 +81,40 @@ struct AsdfService {
         let result = try await runner.run(executable: executable, arguments: ["plugin", "list", "--urls"])
         guard result.exitCode == 0 else { throw commandError(result) }
         return Self.parsePlugins(result.stdout)
+    }
+
+    func pluginCatalog(executable: URL) async throws -> [AsdfPluginCatalogEntry] {
+        let result = try await runner.run(executable: executable, arguments: ["plugin", "list", "all"])
+        guard result.exitCode == 0 else { throw commandError(result) }
+        return Self.parsePluginCatalog(result.stdout)
+    }
+
+    func current(
+        executable: URL,
+        tool: String? = nil,
+        currentDirectory: URL? = nil
+    ) async throws -> [AsdfCurrentEntry] {
+        var arguments = ["current"]
+        if let tool = normalizedOptional(tool) {
+            arguments.append(tool)
+        }
+        let result = try await runner.run(
+            executable: executable,
+            arguments: arguments,
+            currentDirectory: currentDirectory
+        )
+        guard result.exitCode == 0 else { throw commandError(result) }
+        return Self.parseCurrent(result.stdout)
+    }
+
+    func shimVersions(executable: URL, command: String) async throws -> [AsdfShimProvider] {
+        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else {
+            throw AsdfError.commandFailed("A shim command is required.")
+        }
+        let result = try await runner.run(executable: executable, arguments: ["shimversions", command])
+        guard result.exitCode == 0 else { throw commandError(result) }
+        return Self.parseShimVersions(result.stdout)
     }
 
     func installedVersions(executable: URL, tool: String) async throws -> [String] {
@@ -225,6 +282,48 @@ struct AsdfService {
         }
     }
 
+    static func parsePluginCatalog(_ output: String) -> [AsdfPluginCatalogEntry] {
+        output.split(whereSeparator: { $0.isNewline }).compactMap { line in
+            let parts = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).map(String.init)
+            guard let name = parts.first, !name.isEmpty else { return nil }
+            return AsdfPluginCatalogEntry(name: name, url: parts.count > 1 ? parts[1] : nil)
+        }
+    }
+
+    static func parseCurrent(_ output: String) -> [AsdfCurrentEntry] {
+        output
+            .split(whereSeparator: { $0.isNewline })
+            .compactMap { rawLine in
+                let columns = splitAlignedColumns(String(rawLine))
+                guard !columns.isEmpty else { return nil }
+                if columns[0].caseInsensitiveCompare("Name") == .orderedSame {
+                    return nil
+                }
+                guard columns.count >= 3 else { return nil }
+
+                let installedText = columns.last?.lowercased() ?? ""
+                guard installedText == "true" || installedText == "false" else { return nil }
+
+                let name = columns[0]
+                let version = columns[1]
+                let source = columns.count >= 4 ? columns[2] : nil
+                return AsdfCurrentEntry(
+                    name: name,
+                    version: version,
+                    source: source?.isEmpty == false ? source : nil,
+                    isInstalled: installedText == "true"
+                )
+            }
+    }
+
+    static func parseShimVersions(_ output: String) -> [AsdfShimProvider] {
+        output.split(whereSeparator: { $0.isNewline }).compactMap { line in
+            let parts = line.split(maxSplits: 1, whereSeparator: { $0.isWhitespace }).map(String.init)
+            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+            return AsdfShimProvider(plugin: parts[0], version: parts[1])
+        }
+    }
+
     static func parseInstalledVersions(_ output: String) -> [String] {
         parseVersionLines(output).map { value in
             guard value.hasPrefix("*") else { return value }
@@ -237,6 +336,38 @@ struct AsdfService {
             .split(whereSeparator: { $0.isNewline })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    private static func splitAlignedColumns(_ line: String) -> [String] {
+        var columns: [String] = []
+        var current = ""
+        var whitespaceRun = ""
+
+        func flushWhitespace() {
+            guard !whitespaceRun.isEmpty else { return }
+            if whitespaceRun.contains("\t") || whitespaceRun.count >= 2 {
+                let value = current.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !value.isEmpty { columns.append(value) }
+                current = ""
+            } else {
+                current.append(" ")
+            }
+            whitespaceRun = ""
+        }
+
+        for character in line {
+            if character == " " || character == "\t" {
+                whitespaceRun.append(character)
+            } else {
+                flushWhitespace()
+                current.append(character)
+            }
+        }
+        flushWhitespace()
+
+        let tail = current.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { columns.append(tail) }
+        return columns
     }
 
     private func checkedResult(_ result: AsdfCommandResult) throws -> AsdfCommandResult {
