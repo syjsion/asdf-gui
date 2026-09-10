@@ -5,6 +5,12 @@ struct AsdfCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .appSettings) {
+            Button("Getting Started…") {
+                openWindow(id: "getting-started")
+            }
+
+            Divider()
+
             Button("Set Runtime Version…") {
                 openWindow(id: "version-selection")
             }
@@ -21,6 +27,11 @@ struct AsdfCommands: Commands {
                 openWindow(id: "diagnostics")
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
+
+            Button("Shell Integration…") {
+                openWindow(id: "shell-integration")
+            }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
         }
     }
 }

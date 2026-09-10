@@ -8,7 +8,7 @@ struct AsdfGUIApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootContentView()
+            OnboardingRootView()
                 .environment(model)
                 .environment(bootstrapModel)
                 .frame(minWidth: 900, minHeight: 580)
@@ -16,6 +16,12 @@ struct AsdfGUIApp: App {
         .commands {
             AsdfCommands()
         }
+
+        Window("Getting Started", id: "getting-started") {
+            GettingStartedView()
+                .environment(model)
+        }
+        .defaultSize(width: 740, height: 680)
 
         Window("Set Runtime Version", id: "version-selection") {
             VersionSelectionView()
@@ -34,6 +40,12 @@ struct AsdfGUIApp: App {
                 .environment(model)
         }
         .defaultSize(width: 820, height: 620)
+
+        Window("Shell Integration", id: "shell-integration") {
+            ShellIntegrationView()
+                .environment(model)
+        }
+        .defaultSize(width: 760, height: 610)
 
         Settings {
             SettingsView()
