@@ -158,11 +158,11 @@ struct ShellIntegrationService {
             throw ShellIntegrationError.malformedManagedBlock
         }
 
-        var upper = end.upperBound
-        if upper < contents.endIndex, contents[upper] == "\n" {
-            upper = contents.index(after: upper)
-        }
-        return begin.lowerBound..<upper
+        // Deliberately exclude any trailing newline from the managed range. Newlines
+        // belong to the surrounding file layout, not to the app-owned block itself.
+        // This makes a freshly written block compare equal on the next plan and keeps
+        // replacement safe even when the block is followed by user content.
+        return begin.lowerBound..<end.upperBound
     }
 
     private func write(_ contents: String, to url: URL) throws {
