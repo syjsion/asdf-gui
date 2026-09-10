@@ -32,6 +32,27 @@ final class VersionSelectionTests: XCTestCase {
         XCTAssertEqual(resolvedWorkingDirectory.path, resolvedProject.path)
     }
 
+    func testSetProjectVersionPreservesFallbackArgumentOrder() async throws {
+        let fixture = try makeCaptureExecutable()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+
+        let project = fixture.root.appendingPathComponent("fallback-project", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+
+        _ = try await AsdfService().setVersion(
+            executable: fixture.executable,
+            tool: "python",
+            versions: ["3.13.2", "3.12.9", "system"],
+            scope: .project(project)
+        )
+
+        let arguments = try String(contentsOf: fixture.arguments, encoding: .utf8)
+            .split(whereSeparator: { $0.isNewline })
+            .map(String.init)
+
+        XCTAssertEqual(arguments, ["set", "python", "3.13.2", "3.12.9", "system"])
+    }
+
     func testSetHomeVersionUsesHomeFlagAndSupportsFallbackArguments() async throws {
         let fixture = try makeCaptureExecutable()
         defer { try? FileManager.default.removeItem(at: fixture.root) }
