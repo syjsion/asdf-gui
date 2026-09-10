@@ -2,101 +2,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
-struct ApplicationRootView: View {
-    @Environment(AppModel.self) private var model
-    @Environment(AsdfBootstrapModel.self) private var bootstrap
-    @Environment(\.openWindow) private var openWindow
-    @AppStorage("asdfGUI.hasPresentedGettingStarted") private var hasPresentedGettingStarted = false
-
-    var body: some View {
-        Group {
-            if model.isLoading && model.executableURL == nil && bootstrap.activeInstallation == nil {
-                VStack(spacing: 14) {
-                    ProgressView().controlSize(.large)
-                    Text("Checking for asdf…")
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.executableURL == nil {
-                AsdfSetupView()
-            } else {
-                MainNavigationView()
-            }
-        }
-        .task {
-            if model.executableURL == nil {
-                await model.refresh()
-            }
-            presentGettingStartedIfNeeded()
-        }
-        .onChange(of: model.executableURL?.path) { _, _ in presentGettingStartedIfNeeded() }
-        .onChange(of: model.plugins) { _, _ in presentGettingStartedIfNeeded() }
-    }
-
-    private func presentGettingStartedIfNeeded() {
-        guard !hasPresentedGettingStarted,
-              !model.isLoading,
-              model.executableURL != nil,
-              model.plugins.isEmpty,
-              model.projects.isEmpty else { return }
-        hasPresentedGettingStarted = true
-        openWindow(id: "getting-started")
-    }
-}
-
-private enum MainSidebarItem: String, CaseIterable, Identifiable {
-    case overview
-    case projects
-    case versions
-    case plugins
-
-    var id: String { rawValue }
-
-    var title: LocalizedStringKey {
-        switch self {
-        case .overview: "Overview"
-        case .projects: "Projects"
-        case .versions: "Versions"
-        case .plugins: "Plugins"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .overview: "gauge.with.dots.needle.67percent"
-        case .projects: "folder"
-        case .versions: "square.stack.3d.up"
-        case .plugins: "shippingbox"
-        }
-    }
-}
-
-@MainActor
-struct MainNavigationView: View {
-    @Environment(AppModel.self) private var model
-    @State private var selection: MainSidebarItem? = .overview
-
-    var body: some View {
-        NavigationSplitView {
-            List(MainSidebarItem.allCases, selection: $selection) { item in
-                Label(item.title, systemImage: item.icon)
-                    .tag(item)
-            }
-            .navigationTitle("asdf GUI")
-            .navigationSplitViewColumnWidth(min: 170, ideal: 205, max: 240)
-        } detail: {
-            switch selection ?? .overview {
-            case .overview: OverviewView()
-            case .projects: ProjectsPolishedView()
-            case .versions: VersionsView()
-            case .plugins: PluginsView()
-            }
-        }
-        .task { await model.refresh() }
-    }
-}
-
-@MainActor
 struct ProjectsPolishedView: View {
     @Environment(AppModel.self) private var model
     @State private var isAddingProject = false
@@ -216,12 +121,10 @@ private struct ProjectCard: View {
                 }
 
                 Divider()
-
                 projectContents(installPlan: installPlan)
             }
             .padding(4)
         }
-        .groupBoxStyle(.automatic)
     }
 
     @ViewBuilder
@@ -239,7 +142,7 @@ private struct ProjectCard: View {
                 .foregroundStyle(.secondary)
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(snapshot.requirements.enumerated()), id: \.element.id) { index, requirement in
+                ForEach(Array(snapshot.requirements.enumerated()), id: \.offset) { index, requirement in
                     ProjectRequirementLine(requirement: requirement)
                     if index < snapshot.requirements.count - 1 {
                         Divider().padding(.vertical, 9)
@@ -265,10 +168,9 @@ private struct ProjectCard: View {
     }
 
     private func plannedText(_ count: Int) -> String {
-        if language == .simplifiedChinese {
-            return "待安装 \(count) 个运行时"
-        }
-        return "\(count) planned runtime\(count == 1 ? "" : "s")"
+        language == .simplifiedChinese
+            ? "待安装 \(count) 个运行时"
+            : "\(count) planned runtime\(count == 1 ? "" : "s")"
     }
 }
 
@@ -363,6 +265,10 @@ struct AppSettingsView: View {
     @State private var importerError: String?
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
 
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
+
     var body: some View {
         Form {
             Section("Language") {
@@ -378,8 +284,13 @@ struct AppSettingsView: View {
             }
 
             Section("asdf executable") {
-                LabeledContent("Active path", value: model.executableURL?.path ?? String(localized: "Not detected"))
-                LabeledContent("Selection", value: model.configuredExecutableURL == nil ? String(localized: "Automatic") : String(localized: "Custom"))
+                LabeledContent("Active path", value: model.executableURL?.path ?? language.localized("Not detected"))
+                LabeledContent(
+                    "Selection",
+                    value: model.configuredExecutableURL == nil
+                        ? language.localized("Automatic")
+                        : language.localized("Custom")
+                )
 
                 HStack {
                     Button("Choose asdf…") { isChoosingExecutable = true }
