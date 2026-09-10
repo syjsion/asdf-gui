@@ -2,7 +2,7 @@
 
 Native macOS GUI for [asdf](https://asdf-vm.com/), built with SwiftUI and Foundation.
 
-The project keeps asdf and `.tool-versions` as the sources of truth. The app is a typed, visual control layer over the existing CLI rather than a reimplementation of version management.
+The project keeps asdf and `.tool-versions` as the sources of truth. The app is a typed, visual control and explanation layer over the existing CLI rather than a reimplementation of version management.
 
 ## Requirements
 
@@ -10,26 +10,66 @@ The project keeps asdf and `.tool-versions` as the sources of truth. The app is 
 - asdf may already be installed, or asdf GUI can install the latest official macOS binary for you
 - Xcode / a compatible Swift toolchain is only required when building from source
 
-## First launch / asdf setup
+## Highlights
 
-If asdf GUI cannot find a usable `asdf` executable, the app opens a dedicated setup screen instead of showing empty runtime/plugin views.
+### Projects
 
-The **Install asdf** action:
+- Add/remove managed folders and search/sort by name, path, or configured tool.
+- Card-based project status with Installed / Missing / System / Local path / Plugin missing / Unknown states.
+- Visual `.tool-versions` management without exposing a raw text editor.
+- Add/edit/reorder fallback chains through `asdf set <tool> <version...>` in the project directory.
+- Delete-one-tool is the only guarded direct-file exception because asdf 0.20 has no delete-entry command; it preserves unrelated lines/comments/permissions and rejects stale or duplicate target entries.
+- Install Missing uses deterministic fallback planning, streaming logs, cancellation, and the application-wide write gate.
 
-- queries the official `asdf-vm/asdf` GitHub latest-release API;
-- selects the matching macOS archive for the current app architecture (`arm64` or `amd64`);
-- requires and verifies the release asset's SHA-256 digest before extraction;
-- installs the binary to `~/.local/bin/asdf` without `sudo` or Homebrew;
-- verifies the downloaded executable with `asdf version` before activating it;
-- persists that exact executable path so Finder-launched asdf GUI does not depend on your interactive shell `PATH`.
+### Versions
 
-The installer never edits shell startup files automatically. After asdf is ready, **Shell Integration** (`⌘⇧S`) can configure Terminal use explicitly. It supports Zsh (`~/.zshrc`) and Bash (`~/.bash_profile`), previews the exact managed block first, and only writes after confirmation. The block adds the active asdf executable directory plus `${ASDF_DATA_DIR:-$HOME/.asdf}/shims` to `PATH`.
+- Installed versions are always shown before the full available catalog.
+- Browse installed/latest/available versions with search and filtering.
+- Install/uninstall exact runtime versions with live logs and cancellation.
+- Uninstall shows managed-project usage impact before confirmation.
+- **Runtime Update Center** compares every installed plugin with `asdf latest`; installing an update installs that exact latest version without removing older versions or rewriting `.tool-versions`.
+- Set exact versions at three scopes:
+  - current Project: `asdf set <tool> <version>`;
+  - closest existing parent configuration: `asdf set -p <tool> <version>`;
+  - Home default: `asdf set -u <tool> <version>`.
+  Parent mode previews the exact ancestor `.tool-versions` file before writing.
 
-Fresh installations with no plugins or projects also get a one-time **Getting Started** window. It links directly to Shell Integration and Plugin Manager, then points users to Versions and Projects in the main sidebar.
+### Resolution and environment
 
-## Language
+- `asdf current [tool]` explains the effective version, source configuration and install state in Home or any managed project.
+- `asdf which <command>` and `asdf shimversions <command>` explain the executable and shim providers for commands such as `node`, `npm`, `python` or `yarn`.
+- **Environment Inspector** wraps `asdf env <command>` and compares Home vs selected-project `PATH`, `ASDF_*` and plugin-provided variables. It is deliberately limited to shimmed commands rather than exposing an arbitrary shell.
 
-asdf GUI supports **English and Simplified Chinese (简体中文)**. The initial default follows the macOS preferred language, and the language can be changed at any time from **Settings → Language** without restarting the app.
+### Project Health
+
+The Overview page links to a full **Project Health** report. It combines `.tool-versions` requirements with `asdf current` to surface missing plugins, missing runtimes when no fallback is usable, unknown lookup state, unreadable/empty configuration, effective runtimes reported as not installed, and the parent/Home `.tool-versions` files actually supplying inherited versions.
+
+The full resolution scan is on demand so normal startup stays lightweight.
+
+### Plugins and diagnostics
+
+- Plugin Manager: Add / Discover / Update / Update All / Remove.
+- Search the official `asdf plugin list all` catalog and install entries without memorizing plugin names.
+- Plugin removal enumerates installed runtimes and managed-project impact first.
+- Diagnostics: `asdf info`, `asdf where`, `asdf which`, `asdf reshim`, plus a copyable diagnostic report.
+
+### Onboarding and localization
+
+- Dedicated missing-asdf setup screen.
+- Verified in-app installation from official asdf GitHub release assets to `~/.local/bin/asdf`, including SHA-256 verification and no `sudo`/Homebrew requirement.
+- Explicit Zsh/Bash Shell Integration with preview, managed markers, race protection and removal support.
+- One-time Getting Started guide.
+- English / Simplified Chinese in-app language switching without restart.
+- About window with app/asdf information and GitHub Release update checking, including the current prerelease channel.
+
+## Safety model
+
+- SwiftUI views do not construct shell command strings.
+- Normal asdf commands are typed behind `AsdfService`; process execution is behind `AsdfCommandRunner`.
+- Commands use `Process.executableURL` + argument arrays, not `/bin/zsh -c` interpolation.
+- Only one mutation/bootstrap/configuration operation runs application-wide at a time.
+- Potentially destructive runtime/plugin removal shows known impact first.
+- `.tool-versions` remains deterministic: Update Center never writes `latest` into project files.
 
 ## Run from source
 
@@ -44,16 +84,12 @@ You can also open `Package.swift` directly in Xcode.
 
 The release pipeline supports two modes:
 
-- **Ad-hoc prerelease** — requires no paid Apple Developer account. The app is ad-hoc signed for bundle integrity, but is not Apple-notarized or Gatekeeper-trusted. On first launch, use **Control-click / right-click the app → Open → Open**.
-- **Developer ID release** — automatically enabled later if all documented Apple signing/notarization secrets are configured.
+- **Ad-hoc prerelease** — no paid Apple Developer account required. The app is ad-hoc signed for bundle integrity but is not Apple-notarized. On first launch use **Control-click / right-click the app → Open → Open**.
+- **Developer ID release** — automatically enabled later when all documented Apple signing/notarization secrets are configured.
 
-Both modes publish separate Apple Silicon (`arm64`) and Intel (`x86_64`) DMGs plus `SHA256SUMS.txt`.
+Both modes build separate Apple Silicon (`arm64`) and Intel (`x86_64`) DMGs plus `SHA256SUMS.txt`. See [`docs/RELEASING.md`](docs/RELEASING.md).
 
-See [`docs/RELEASING.md`](docs/RELEASING.md) for release triggers, first-launch instructions, optional Apple credentials, and troubleshooting.
-
-## Build a local macOS app / DMG
-
-No Apple Developer account is required:
+## Local package build
 
 ```bash
 rm -rf dist
@@ -65,52 +101,6 @@ SIGN_IDENTITY=- \
     "dist/asdf-gui-0.0.0-dev-macos-$(uname -m)-adhoc.dmg"
 ```
 
-## Current features
-
-- English / Simplified Chinese UI with an in-app language switch.
-- Detect asdf in common installation locations and allow a persisted custom executable path.
-- Dedicated missing-asdf setup experience with verified one-click installation from official GitHub release assets.
-- Explicit Zsh/Bash Shell Integration with preview, managed markers, update/remove support, and configuration-race protection.
-- One-time Getting Started guide for fresh installations, reopenable from the app menu.
-- Overview of asdf version, executable, plugins, and managed projects.
-- Card-based Projects page with **search by project/path/tool** and sorting by **name, path, or tool count**.
-- Add/remove managed project folders and reread `.tool-versions` from disk instead of caching project configuration.
-- **Visual `.tool-versions` management per project:** add a tool, edit its version/fallback chain, reorder fallbacks, and remove a tool without exposing a raw text editor.
-- Add/edit/reorder writes run `asdf set <tool> <version...>` in the selected project directory.
-- Because asdf 0.20 has no command that deletes one tool entry, removal is the single guarded direct-file exception with race/duplicate/content/permission protection.
-- Compare project requirements with installed asdf runtimes and show Installed, Missing, System, Local path, Plugin missing, or Unknown state.
-- Install missing project runtimes with live stdout/stderr, cancellation, deterministic fallback planning, and post-success refresh.
-- Browse installed/latest/available versions per plugin with search and Installed-only filtering; installed versions stay first.
-- Install or uninstall individual runtime versions with managed-project usage impact before uninstall.
-- Set project versions through `asdf set` or a Home default through `asdf set -u`.
-- **Resolution** sidebar for directory-aware `asdf current` results: effective version, source `.tool-versions`, and installed state for Home or a managed project.
-- **Shim & Command Explorer** for `asdf shimversions <command>` plus directory-aware `asdf which <command>` so commands like `node`, `npm`, `python`, or `yarn` can be explained visually.
-- **Plugin Manager** (`⌘⇧P`) for Add / Update / Update All / Remove plus **Discover Plugins**, a searchable `asdf plugin list all` catalog that installs with the returned Git URL when available.
-- **Diagnostics** (`⌘⇧D`) for `asdf info`, `asdf where`, `asdf which`, and `asdf reshim`.
-- Native **Set Runtime Version** window (`⌘⇧V`).
-- **About asdf GUI** window with app/build/asdf information and GitHub Release update checking, including prereleases and architecture-specific DMGs.
-- Streaming/cancellable `Foundation.Process` command runner with no shell-string interpolation.
-- Reproducible `.app` and DMG packaging directly from SwiftPM, including localization resources.
-- No-account ad-hoc GitHub prerelease workflow plus optional Developer ID/notarization mode later.
-- Separate Apple Silicon and Intel release artifacts with SHA-256 checksums.
-- macOS GitHub Actions CI running tests and app/DMG package verification.
-
-## Release triggers
-
-Normal release tag:
-
-```text
-vMAJOR.MINOR.PATCH
-```
-
-Automation may alternatively create a branch named:
-
-```text
-publish/vMAJOR.MINOR.PATCH
-```
-
-The latter exists so tools that can create branches but not Git tags can still trigger the same Release workflow. Ad-hoc artifacts are automatically published as a GitHub prerelease and clearly include `adhoc` in their filenames.
-
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, `.tool-versions` mutation rules, resolution/shim parsing, plugin discovery, destructive-action policies, localization, update checking, bootstrap/shell-integration policy, release modes, roadmap status, and the Codex working agreement.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines the typed command boundaries, `.tool-versions` mutation rules, global write gate, localization, Resolution/Environment/Health behavior, update-center guarantees and distribution contracts.
