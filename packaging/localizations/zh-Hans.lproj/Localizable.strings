@@ -13,6 +13,7 @@
 
 /* Projects */
 "Compare each project's .tool-versions with runtimes installed by asdf." = "对比每个项目的 .tool-versions 与 asdf 已安装运行时。";
+"Inspect and manage each project's .tool-versions with asdf-backed actions." = "通过 asdf 驱动的操作查看并管理每个项目的 .tool-versions。";
 "Add Project" = "添加项目";
 "Refresh Projects" = "刷新项目";
 "No projects" = "暂无项目";
@@ -32,6 +33,43 @@
 "fallback" = "回退";
 "Remove from asdf GUI. Files are not deleted." = "仅从 asdf GUI 移除，不会删除文件。";
 "Install the first missing version for each unsatisfied tool requirement." = "为每个未满足的工具需求安装第一个缺失版本。";
+"Manage .tool-versions" = "管理 .tool-versions";
+"How changes are applied" = "更改方式";
+"Add and edit actions use asdf set in this project directory." = "新增和编辑会在此项目目录中执行 asdf set。";
+"Fallback versions are stored in the order shown below." = "回退版本会按照下方显示的顺序保存。";
+"asdf has no command to delete one tool entry, so removal is a guarded line-level exception that preserves every other line and comment." = "asdf 没有删除单个工具条目的命令，因此删除操作是受保护的行级例外，并会保留其他所有行和注释。";
+"Project configuration unavailable" = "项目配置不可用";
+"Project unavailable" = "项目不可用";
+"The project is no longer in the managed-project list." = "该项目已不在管理列表中。";
+"Configured tools" = "已配置工具";
+"The file will be created by asdf when you add the first tool." = "添加第一个工具时，asdf 会创建该文件。";
+"Add Tool" = "添加工具";
+"No tool entries" = "暂无工具条目";
+"No .tool-versions yet" = "尚无 .tool-versions";
+"Add a tool and choose one or more versions. asdf GUI will write the configuration through asdf set." = "添加工具并选择一个或多个版本，asdf GUI 会通过 asdf set 写入配置。";
+"Edit" = "编辑";
+"Remove tool from .tool-versions?" = "从 .tool-versions 移除此工具？";
+"Add tool configuration" = "添加工具配置";
+"Edit tool configuration" = "编辑工具配置";
+"Tool name" = "工具名称";
+"Installed Plugins" = "已安装插件";
+"Choose an installed plugin or enter a tool name. Existing project entries cannot be duplicated." = "选择已安装插件或输入工具名称；不能与项目现有条目重复。";
+"Fallback chain" = "回退链";
+"Add at least one version. The first item is the primary version; later items are fallbacks." = "至少添加一个版本。第一项是主版本，后续项作为回退版本。";
+"Move earlier" = "向前移动";
+"Move later" = "向后移动";
+"Remove from fallback chain" = "从回退链移除";
+"Exact version, system, ref:…, or path:…" = "精确版本、system、ref:… 或 path:…";
+"Add Version" = "添加版本";
+"Add system" = "添加 system";
+"Version catalog" = "版本目录";
+"Choose a tool to load its asdf version catalog." = "选择工具以加载其 asdf 版本目录。";
+"This tool does not currently have an installed asdf plugin. You can still enter exact values manually; install the plugin to browse its version catalog." = "当前未安装此工具的 asdf 插件。仍可手动输入精确值；安装插件后可浏览版本目录。";
+"Loading versions…" = "正在加载版本…";
+"All catalog versions are already in the fallback chain." = "版本目录中的版本都已加入回退链。";
+"No versions match this filter." = "没有版本匹配此筛选条件。";
+"This tool already exists in the project's .tool-versions. Edit the existing entry instead." = "该工具已存在于项目的 .tool-versions 中，请编辑现有条目。";
+"Save with asdf set" = "使用 asdf set 保存";
 
 /* Versions */
 "Browse, install, and uninstall versions for each installed plugin." = "浏览、安装和卸载每个已安装插件的版本。";
