@@ -19,9 +19,20 @@ swift run asdf-gui
 
 You can also open `Package.swift` directly in Xcode.
 
+## Download / distribution
+
+The release pipeline supports two modes:
+
+- **Ad-hoc prerelease** — requires no paid Apple Developer account. The app is ad-hoc signed for bundle integrity, but is not Apple-notarized or Gatekeeper-trusted. On first launch, use **Control-click / right-click the app → Open → Open**.
+- **Developer ID release** — automatically enabled later if all documented Apple signing/notarization secrets are configured.
+
+Both modes publish separate Apple Silicon (`arm64`) and Intel (`x86_64`) DMGs plus `SHA256SUMS.txt`.
+
+See [`docs/RELEASING.md`](docs/RELEASING.md) for release triggers, first-launch instructions, optional Apple credentials, and troubleshooting.
+
 ## Build a local macOS app / DMG
 
-A Developer ID certificate is not required for a local ad-hoc packaging check:
+No Apple Developer account is required:
 
 ```bash
 rm -rf dist
@@ -30,10 +41,10 @@ VERSION=0.0.0-dev BUILD_NUMBER=1 OUTPUT_DIR="$PWD/dist" SIGN_IDENTITY=- \
 SIGN_IDENTITY=- \
   bash scripts/create-dmg.sh \
     "dist/asdf GUI.app" \
-    "dist/asdf-gui-0.0.0-dev-macos-$(uname -m).dmg"
+    "dist/asdf-gui-0.0.0-dev-macos-$(uname -m)-adhoc.dmg"
 ```
 
-The generated `.app` uses the same SwiftUI executable as `swift run`; the packaging scripts add the standard app bundle metadata, generated ICNS icon, ad-hoc or Developer ID signature, and DMG layout.
+The packaging scripts create the standard `.app` bundle, generated ICNS icon, ad-hoc or Developer ID signature, and drag-to-Applications DMG.
 
 ## Current features
 
@@ -52,19 +63,28 @@ The generated `.app` uses the same SwiftUI executable as `swift run`; the packag
 - Copy the current diagnostic output or generate a copyable diagnostic report containing the active asdf version, executable path, and `asdf info` output.
 - Native **Set Runtime Version** window (`⌘⇧V`).
 - Streaming/cancellable `Foundation.Process` command runner with no shell-string interpolation.
-- Reproducible `.app` and DMG packaging from SwiftPM without requiring an Xcode project.
-- Hardened Runtime / Developer ID signing and Apple `notarytool` automation for public releases.
-- Tag-driven GitHub Release workflow producing separate Apple Silicon and Intel DMGs plus SHA-256 checksums.
-- macOS GitHub Actions CI running tests and an ad-hoc app/DMG packaging verification.
+- Reproducible `.app` and DMG packaging directly from SwiftPM.
+- No-account ad-hoc GitHub prerelease workflow.
+- Optional Developer ID + Hardened Runtime + Apple `notarytool` release path for the future.
+- Separate Apple Silicon and Intel release artifacts with SHA-256 checksums.
+- macOS GitHub Actions CI running tests and app/DMG package verification.
 
-## Distribution
+## Release triggers
 
-Public releases are designed to be Developer ID-signed, Apple-notarized DMGs distributed outside the Mac App Store. The app intentionally does not enable App Sandbox because it needs to launch the user's local `asdf` executable and work with selected project directories.
+Normal release tag:
 
-Release tags use `vMAJOR.MINOR.PATCH`. The release workflow builds and notarizes both `arm64` and `x86_64` artifacts, then publishes them to GitHub Releases. Apple credentials are supplied only through GitHub Actions secrets.
+```text
+vMAJOR.MINOR.PATCH
+```
 
-See [`docs/RELEASING.md`](docs/RELEASING.md) for the signing/notarization secret names, local package verification, release flow, and troubleshooting.
+Automation may alternatively create a branch named:
+
+```text
+publish/vMAJOR.MINOR.PATCH
+```
+
+The latter exists so tools that can create branches but not Git tags can still trigger the same Release workflow. Ad-hoc artifacts are automatically published as a GitHub prerelease and clearly include `adhoc` in their filenames.
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, diagnostics behavior, distribution policy, roadmap status, and a reusable Codex working agreement.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, diagnostics behavior, release modes, roadmap status, and a reusable Codex working agreement.
