@@ -19,6 +19,7 @@ enum AsdfError: LocalizedError {
 
 enum AsdfVersionSetScope: Hashable {
     case project(URL)
+    case parent(URL)
     case home
 }
 
@@ -43,6 +44,13 @@ struct AsdfPluginCatalogEntry: Identifiable, Hashable, Sendable {
     let url: String?
 
     var id: String { name }
+}
+
+struct AsdfEnvironmentEntry: Identifiable, Hashable, Sendable {
+    let key: String
+    let value: String
+
+    var id: String { key }
 }
 
 struct AsdfService {
@@ -107,6 +115,24 @@ struct AsdfService {
         return Self.parseCurrent(result.stdout)
     }
 
+    func environment(
+        executable: URL,
+        command: String,
+        currentDirectory: URL
+    ) async throws -> [AsdfEnvironmentEntry] {
+        let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !command.isEmpty else {
+            throw AsdfError.commandFailed("A shim command is required for asdf env.")
+        }
+        let result = try await runner.run(
+            executable: executable,
+            arguments: ["env", command],
+            currentDirectory: currentDirectory
+        )
+        guard result.exitCode == 0 else { throw commandError(result) }
+        return Self.parseEnvironment(result.stdout)
+    }
+
     func shimVersions(executable: URL, command: String) async throws -> [AsdfShimProvider] {
         let command = command.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !command.isEmpty else {
@@ -151,6 +177,9 @@ struct AsdfService {
 
         switch scope {
         case .project(let directory):
+            currentDirectory = directory
+        case .parent(let directory):
+            arguments.append("-p")
             currentDirectory = directory
         case .home:
             arguments.append("-u")
@@ -314,6 +343,20 @@ struct AsdfService {
                     isInstalled: installedText == "true"
                 )
             }
+    }
+
+    static func parseEnvironment(_ output: String) -> [AsdfEnvironmentEntry] {
+        output
+            .split(whereSeparator: { $0.isNewline })
+            .compactMap { rawLine -> AsdfEnvironmentEntry? in
+                let line = String(rawLine)
+                guard let separator = line.firstIndex(of: "=") else { return nil }
+                let key = String(line[..<separator]).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !key.isEmpty else { return nil }
+                let valueStart = line.index(after: separator)
+                return AsdfEnvironmentEntry(key: key, value: String(line[valueStart...]))
+            }
+            .sorted { $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending }
     }
 
     static func parseShimVersions(_ output: String) -> [AsdfShimProvider] {
