@@ -54,7 +54,7 @@ struct GettingStartedView: View {
                 onboardingStep(
                     number: 2,
                     title: "Connect your shell",
-                    detail: language.localized("Add the active asdf executable directory and asdf shims to Zsh or Bash PATH. The exact managed block is previewed before any file is changed."),
+                    detail: shellDetail,
                     complete: false,
                     actionTitle: "Shell Integration…"
                 ) {
@@ -106,6 +106,12 @@ struct GettingStartedView: View {
             return "\(model.asdfVersion) · \(executable.path)"
         }
         return language == .simplifiedChinese ? "请先安装或选择 asdf。" : "Install or select asdf first."
+    }
+
+    private var shellDetail: String {
+        language == .simplifiedChinese
+            ? "将当前 asdf 可执行文件目录和 asdf shims 加入 Zsh 或 Bash 的 PATH。修改任何文件前都会先预览完整托管配置块。"
+            : "Add the active asdf executable directory and asdf shims to Zsh or Bash PATH. The exact managed block is previewed before any file is changed."
     }
 
     private var pluginDetail: String {
