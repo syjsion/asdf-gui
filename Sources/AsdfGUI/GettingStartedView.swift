@@ -28,6 +28,11 @@ struct OnboardingRootView: View {
 struct GettingStartedView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     var body: some View {
         ScrollView {
@@ -42,14 +47,14 @@ struct GettingStartedView: View {
                 onboardingStep(
                     number: 1,
                     title: "asdf is ready",
-                    detail: model.executableURL.map { "\(model.asdfVersion) at \($0.path)" } ?? "Install or select asdf first.",
+                    detail: asdfReadyDetail,
                     complete: model.executableURL != nil
                 )
 
                 onboardingStep(
                     number: 2,
                     title: "Connect your shell",
-                    detail: "Add the active asdf executable directory and asdf shims to Zsh or Bash PATH. The exact managed block is previewed before any file is changed.",
+                    detail: language.localized("Add the active asdf executable directory and asdf shims to Zsh or Bash PATH. The exact managed block is previewed before any file is changed."),
                     complete: false,
                     actionTitle: "Shell Integration…"
                 ) {
@@ -59,9 +64,7 @@ struct GettingStartedView: View {
                 onboardingStep(
                     number: 3,
                     title: "Add a plugin",
-                    detail: model.plugins.isEmpty
-                        ? "Plugins teach asdf how to install tools such as Node.js, Python, or Ruby."
-                        : "\(model.plugins.count) plugin\(model.plugins.count == 1 ? "" : "s") installed.",
+                    detail: pluginDetail,
                     complete: !model.plugins.isEmpty,
                     actionTitle: model.plugins.isEmpty ? "Open Plugin Manager…" : "Manage Plugins…"
                 ) {
@@ -71,17 +74,14 @@ struct GettingStartedView: View {
                 onboardingStep(
                     number: 4,
                     title: "Install a runtime",
-                    detail: "After adding a plugin, open Versions in the main sidebar, choose a version, and click Install."
-                        + (model.plugins.isEmpty ? " Add a plugin first." : ""),
+                    detail: runtimeDetail,
                     complete: false
                 )
 
                 onboardingStep(
                     number: 5,
                     title: "Add your first project",
-                    detail: model.projects.isEmpty
-                        ? "Open Projects in the main sidebar and add a folder containing .tool-versions."
-                        : "\(model.projects.count) project\(model.projects.count == 1 ? "" : "s") managed.",
+                    detail: projectDetail,
                     complete: !model.projects.isEmpty
                 )
 
@@ -99,6 +99,45 @@ struct GettingStartedView: View {
             .padding(30)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private var asdfReadyDetail: String {
+        if let executable = model.executableURL {
+            return "\(model.asdfVersion) · \(executable.path)"
+        }
+        return language == .simplifiedChinese ? "请先安装或选择 asdf。" : "Install or select asdf first."
+    }
+
+    private var pluginDetail: String {
+        if model.plugins.isEmpty {
+            return language == .simplifiedChinese
+                ? "插件告诉 asdf 如何安装 Node.js、Python 或 Ruby 等工具。"
+                : "Plugins teach asdf how to install tools such as Node.js, Python, or Ruby."
+        }
+        return language == .simplifiedChinese
+            ? "已安装 \(model.plugins.count) 个插件。"
+            : "\(model.plugins.count) plugin\(model.plugins.count == 1 ? "" : "s") installed."
+    }
+
+    private var runtimeDetail: String {
+        if language == .simplifiedChinese {
+            return model.plugins.isEmpty
+                ? "添加插件后，在主侧边栏打开“版本”，选择版本并点击“安装”。请先添加插件。"
+                : "添加插件后，在主侧边栏打开“版本”，选择版本并点击“安装”。"
+        }
+        return "After adding a plugin, open Versions in the main sidebar, choose a version, and click Install."
+            + (model.plugins.isEmpty ? " Add a plugin first." : "")
+    }
+
+    private var projectDetail: String {
+        if model.projects.isEmpty {
+            return language == .simplifiedChinese
+                ? "在主侧边栏打开“项目”，添加一个包含 .tool-versions 的文件夹。"
+                : "Open Projects in the main sidebar and add a folder containing .tool-versions."
+        }
+        return language == .simplifiedChinese
+            ? "已管理 \(model.projects.count) 个项目。"
+            : "\(model.projects.count) project\(model.projects.count == 1 ? "" : "s") managed."
     }
 
     @ViewBuilder
@@ -125,13 +164,13 @@ struct GettingStartedView: View {
             }
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(title).font(.headline)
+                Text(language.localized(title)).font(.headline)
                 Text(detail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                 if let actionTitle, let action {
-                    Button(actionTitle, action: action)
+                    Button(language.localized(actionTitle), action: action)
                         .disabled(model.hasActiveOperation)
                 }
             }
