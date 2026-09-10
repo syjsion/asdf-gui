@@ -35,6 +35,12 @@ struct AsdfGUIApp: App {
         }
         .defaultSize(width: 820, height: 620)
 
+        Window("Shell Integration", id: "shell-integration") {
+            ShellIntegrationView()
+                .environment(model)
+        }
+        .defaultSize(width: 760, height: 610)
+
         Settings {
             SettingsView()
                 .environment(model)
