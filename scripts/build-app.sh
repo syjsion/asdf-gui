@@ -32,6 +32,13 @@ python3 "$ROOT_DIR/scripts/generate-app-icon.py" "$ICONSET_DIR"
 iconutil --convert icns "$ICONSET_DIR" --output "$RESOURCES_DIR/AppIcon.icns"
 rm -rf "$ICONSET_DIR"
 
+LOCALIZATIONS_DIR="$ROOT_DIR/packaging/localizations"
+if [[ -d "$LOCALIZATIONS_DIR" ]]; then
+  while IFS= read -r -d '' lproj; do
+    cp -R "$lproj" "$RESOURCES_DIR/"
+  done < <(find "$LOCALIZATIONS_DIR" -mindepth 1 -maxdepth 1 -type d -name '*.lproj' -print0)
+fi
+
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
   codesign \
     --force \

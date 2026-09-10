@@ -6,6 +6,11 @@ struct ShellIntegrationView: View {
     @State private var model = ShellIntegrationModel()
     @State private var isShowingApplyConfirmation = false
     @State private var isShowingRemoveConfirmation = false
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -37,7 +42,7 @@ struct ShellIntegrationView: View {
                         HStack {
                             Text("Integration")
                             Spacer()
-                            Label(plan.status.title, systemImage: plan.status.symbolName)
+                            Label(language.localized(plan.status.title), systemImage: plan.status.symbolName)
                                 .foregroundStyle(plan.status == .configured ? .secondary : .primary)
                         }
                     }
@@ -78,7 +83,7 @@ struct ShellIntegrationView: View {
                     }
 
                     if plan.status != .configured {
-                        Button(plan.status == .needsUpdate ? "Update Integration" : "Configure Shell", systemImage: "terminal") {
+                        Button(language.localized(plan.status == .needsUpdate ? "Update Integration" : "Configure Shell"), systemImage: "terminal") {
                             isShowingApplyConfirmation = true
                         }
                         .buttonStyle(.borderedProminent)
@@ -94,7 +99,7 @@ struct ShellIntegrationView: View {
                 ContentUnavailableView(
                     "Integration unavailable",
                     systemImage: "terminal",
-                    description: Text(model.errorMessage ?? "Could not prepare shell integration for \(executableURL.path).")
+                    description: Text(model.errorMessage ?? unavailableMessage(executableURL))
                 )
             } else {
                 ContentUnavailableView(
@@ -122,7 +127,7 @@ struct ShellIntegrationView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let plan = model.plan {
-                Text("asdf GUI will modify \(plan.configurationURL.path) by adding or replacing only its marked integration block. Existing content outside the markers will remain unchanged.")
+                Text(applyMessage(plan))
             }
         }
         .alert("Remove shell integration?", isPresented: $isShowingRemoveConfirmation) {
@@ -132,9 +137,30 @@ struct ShellIntegrationView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             if let plan = model.plan {
-                Text("Only the block between the asdf GUI markers will be removed from \(plan.configurationURL.path).")
+                Text(removeMessage(plan))
             }
         }
+    }
+
+    private func unavailableMessage(_ executableURL: URL) -> String {
+        if language == .simplifiedChinese {
+            return "无法为 \(executableURL.path) 准备 Shell 集成。"
+        }
+        return "Could not prepare shell integration for \(executableURL.path)."
+    }
+
+    private func applyMessage(_ plan: ShellIntegrationPlan) -> String {
+        if language == .simplifiedChinese {
+            return "asdf GUI 将修改 \(plan.configurationURL.path)，只添加或替换带标记的集成配置块，标记之外的现有内容保持不变。"
+        }
+        return "asdf GUI will modify \(plan.configurationURL.path) by adding or replacing only its marked integration block. Existing content outside the markers will remain unchanged."
+    }
+
+    private func removeMessage(_ plan: ShellIntegrationPlan) -> String {
+        if language == .simplifiedChinese {
+            return "只会从 \(plan.configurationURL.path) 中移除 asdf GUI 标记之间的配置块。"
+        }
+        return "Only the block between the asdf GUI markers will be removed from \(plan.configurationURL.path)."
     }
 }
 

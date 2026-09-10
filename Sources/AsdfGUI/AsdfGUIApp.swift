@@ -5,12 +5,19 @@ import SwiftUI
 struct AsdfGUIApp: App {
     @State private var model = AppModel()
     @State private var bootstrapModel = AsdfBootstrapModel()
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     var body: some Scene {
         WindowGroup {
-            OnboardingRootView()
+            LocalizedAppRootView()
                 .environment(model)
                 .environment(bootstrapModel)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
                 .frame(minWidth: 900, minHeight: 580)
         }
         .commands {
@@ -20,37 +27,58 @@ struct AsdfGUIApp: App {
         Window("Getting Started", id: "getting-started") {
             GettingStartedView()
                 .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
         }
         .defaultSize(width: 740, height: 680)
 
         Window("Set Runtime Version", id: "version-selection") {
             VersionSelectionView()
                 .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
         }
         .defaultSize(width: 620, height: 500)
 
         Window("Plugin Manager", id: "plugin-manager") {
             PluginManagerView()
                 .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
         }
         .defaultSize(width: 860, height: 620)
 
         Window("Diagnostics", id: "diagnostics") {
             DiagnosticsView()
                 .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
         }
         .defaultSize(width: 820, height: 620)
 
         Window("Shell Integration", id: "shell-integration") {
             ShellIntegrationView()
                 .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
         }
         .defaultSize(width: 760, height: 610)
 
+        Window("About asdf GUI", id: "about") {
+            AboutView()
+                .environment(model)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
+        }
+        .defaultSize(width: 600, height: 500)
+        .windowResizability(.contentSize)
+
         Settings {
-            SettingsView()
+            AppSettingsView()
                 .environment(model)
                 .environment(bootstrapModel)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
         }
     }
 }
