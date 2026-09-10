@@ -82,7 +82,7 @@ struct LocalizedAppRootView: View {
             .navigationSplitViewColumnWidth(min: 170, ideal: 205, max: 240)
         } detail: {
             switch selection ?? .overview {
-            case .overview: OverviewView()
+            case .overview: PolishedOverviewView()
             case .projects: ProjectsPolishedView()
             case .versions: VersionsPolishedView()
             case .resolution: ResolutionView()
