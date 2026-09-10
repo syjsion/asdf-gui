@@ -3,10 +3,15 @@ import SwiftUI
 @MainActor
 struct ResolutionView: View {
     @Environment(AppModel.self) private var appModel
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var state = ResolutionModel()
     @State private var contextID = "__home__"
     @State private var toolFilter = "__all__"
     @State private var command = ""
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     private var contexts: [ResolutionContext] {
         [ResolutionContext(project: nil)] + appModel.projects.map { ResolutionContext(project: $0) }
@@ -23,23 +28,23 @@ struct ResolutionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Resolution")
+                Text(language.localized("Resolution"))
                     .font(.largeTitle.bold())
-                Text("Explain which runtime version and executable asdf resolves in a specific project context.")
+                Text(language.localized("Explain which runtime version and executable asdf resolves in a specific project context."))
                     .foregroundStyle(.secondary)
             }
 
-            GroupBox("Context") {
+            GroupBox {
                 HStack(spacing: 14) {
-                    Picker("Directory", selection: $contextID) {
+                    Picker(language.localized("Directory"), selection: $contextID) {
                         ForEach(contexts) { context in
-                            Text(context.title).tag(context.id)
+                            Text(context.project == nil ? language.localized("Home") : context.title).tag(context.id)
                         }
                     }
                     .frame(minWidth: 220)
 
-                    Picker("Tool", selection: $toolFilter) {
-                        Text("All tools").tag("__all__")
+                    Picker(language.localized("Tool"), selection: $toolFilter) {
+                        Text(language.localized("All tools")).tag("__all__")
                         ForEach(appModel.plugins) { plugin in
                             Text(plugin.name).tag(plugin.name)
                         }
@@ -51,7 +56,7 @@ struct ResolutionView: View {
                     if state.isLoadingCurrent {
                         ProgressView().controlSize(.small)
                     }
-                    Button("Resolve Versions", systemImage: "arrow.triangle.branch") {
+                    Button(language.localized("Resolve Versions"), systemImage: "arrow.triangle.branch") {
                         Task {
                             await state.loadCurrent(
                                 appModel: appModel,
@@ -68,6 +73,8 @@ struct ResolutionView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Text(language.localized("Context"))
             }
 
             if let error = state.currentError {
@@ -77,33 +84,33 @@ struct ResolutionView: View {
                     .textSelection(.enabled)
             }
 
-            GroupBox("Effective versions") {
+            GroupBox {
                 if state.currentEntries.isEmpty && !state.isLoadingCurrent {
                     ContentUnavailableView(
-                        "No resolution results",
+                        language.localized("No resolution results"),
                         systemImage: "arrow.triangle.branch",
-                        description: Text("Choose a context and resolve all tools or one installed plugin.")
+                        description: Text(language.localized("Choose a context and resolve all tools or one installed plugin."))
                     )
                     .frame(maxWidth: .infinity, minHeight: 150)
                 } else {
                     Table(state.currentEntries) {
-                        TableColumn("Tool") { entry in
+                        TableColumn(language.localized("Tool")) { entry in
                             Text(entry.name).fontWeight(.medium)
                         }
-                        TableColumn("Version") { entry in
+                        TableColumn(language.localized("Version")) { entry in
                             Text(entry.version)
                                 .font(.system(.body, design: .monospaced))
                                 .textSelection(.enabled)
                         }
-                        TableColumn("Source") { entry in
+                        TableColumn(language.localized("Source")) { entry in
                             Text(entry.source ?? "—")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
-                        TableColumn("Installed") { entry in
+                        TableColumn(language.localized("Installed")) { entry in
                             Label(
-                                entry.isInstalled ? "Installed" : "Missing",
+                                entry.isInstalled ? language.localized("Installed") : language.localized("Missing"),
                                 systemImage: entry.isInstalled ? "checkmark.circle.fill" : "exclamationmark.circle"
                             )
                             .foregroundStyle(entry.isInstalled ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.red))
@@ -111,18 +118,20 @@ struct ResolutionView: View {
                     }
                     .frame(minHeight: 180)
                 }
+            } label: {
+                Text(language.localized("Effective versions"))
             }
 
-            GroupBox("Shim & command explorer") {
+            GroupBox {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        TextField("Command, e.g. node, npm, python, yarn", text: $command)
+                        TextField(language.localized("Command, e.g. node, npm, python, yarn"), text: $command)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit { resolveCommand() }
                         if state.isLoadingCommand {
                             ProgressView().controlSize(.small)
                         }
-                        Button("Resolve Command", systemImage: "scope") {
+                        Button(language.localized("Resolve Command"), systemImage: "scope") {
                             resolveCommand()
                         }
                         .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || state.isLoadingCommand)
@@ -136,7 +145,7 @@ struct ResolutionView: View {
                     }
 
                     if let path = state.resolvedCommandPath {
-                        LabeledContent("Resolved executable") {
+                        LabeledContent(language.localized("Resolved executable")) {
                             Text(path)
                                 .font(.system(.body, design: .monospaced))
                                 .textSelection(.enabled)
@@ -145,7 +154,7 @@ struct ResolutionView: View {
 
                     if !state.shimProviders.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Shim providers").font(.headline)
+                            Text(language.localized("Shim providers")).font(.headline)
                             ForEach(state.shimProviders) { provider in
                                 HStack {
                                     Text(provider.plugin).fontWeight(.medium)
@@ -159,6 +168,8 @@ struct ResolutionView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Text(language.localized("Shim & command explorer"))
             }
         }
         .padding(28)
