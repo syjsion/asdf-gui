@@ -4,10 +4,15 @@ import SwiftUI
 struct PluginDiscoveryView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var discovery = PluginDiscoveryModel()
     @State private var searchText = ""
 
     let operationModel: PluginManagementModel
+
+    private var language: AppLanguage {
+        AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
+    }
 
     private var filteredCatalog: [AsdfPluginCatalogEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -26,23 +31,23 @@ struct PluginDiscoveryView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Discover Plugins")
+                    Text(language.localized("Discover Plugins"))
                         .font(.largeTitle.bold())
-                    Text("Search the official asdf short-name plugin catalog and install without memorizing plugin names.")
+                    Text(language.localized("Search the official asdf short-name plugin catalog and install without memorizing plugin names."))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if discovery.isLoading {
                     ProgressView().controlSize(.small)
                 }
-                Button("Refresh", systemImage: "arrow.clockwise") {
+                Button(language.localized("Refresh"), systemImage: "arrow.clockwise") {
                     Task { await discovery.load(appModel: appModel) }
                 }
                 .disabled(discovery.isLoading)
-                Button("Close") { dismiss() }
+                Button(language.localized("Close")) { dismiss() }
             }
 
-            TextField("Search plugins", text: $searchText)
+            TextField(language.localized("Search plugins"), text: $searchText)
                 .textFieldStyle(.roundedBorder)
 
             if let error = discovery.errorMessage {
@@ -53,36 +58,36 @@ struct PluginDiscoveryView: View {
 
             if filteredCatalog.isEmpty && !discovery.isLoading {
                 ContentUnavailableView(
-                    discovery.catalog.isEmpty ? "No plugin catalog" : "No matching plugins",
+                    language.localized(discovery.catalog.isEmpty ? "No plugin catalog" : "No matching plugins"),
                     systemImage: "shippingbox.and.arrow.backward",
-                    description: Text(discovery.catalog.isEmpty
+                    description: Text(language.localized(discovery.catalog.isEmpty
                         ? "Refresh to load asdf plugin list all."
-                        : "Try another plugin name or repository URL.")
+                        : "Try another plugin name or repository URL."))
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 Table(filteredCatalog) {
-                    TableColumn("Plugin") { entry in
+                    TableColumn(language.localized("Plugin")) { entry in
                         HStack(spacing: 8) {
                             Text(entry.name).fontWeight(.medium)
                             if installedNames.contains(entry.name) {
-                                Label("Installed", systemImage: "checkmark.circle.fill")
+                                Label(language.localized("Installed"), systemImage: "checkmark.circle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                         }
                     }
-                    TableColumn("Repository") { entry in
+                    TableColumn(language.localized("Repository")) { entry in
                         Text(entry.url ?? "—")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                     }
-                    TableColumn("Action") { entry in
+                    TableColumn(language.localized("Action")) { entry in
                         if installedNames.contains(entry.name) {
-                            Text("Installed").foregroundStyle(.secondary)
+                            Text(language.localized("Installed")).foregroundStyle(.secondary)
                         } else {
-                            Button("Install") {
+                            Button(language.localized("Install")) {
                                 operationModel.addPlugin(
                                     name: entry.name,
                                     gitURL: entry.url,
