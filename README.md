@@ -7,10 +7,10 @@ The project keeps asdf and `.tool-versions` as the sources of truth. The app is 
 ## Requirements
 
 - macOS 14+
-- Xcode 15.3+ or a compatible Swift 5.10 toolchain
+- Xcode / Swift toolchain capable of building the Swift 5.10 package
 - asdf installed locally
 
-## Run
+## Run from source
 
 ```bash
 swift test
@@ -18,6 +18,22 @@ swift run asdf-gui
 ```
 
 You can also open `Package.swift` directly in Xcode.
+
+## Build a local macOS app / DMG
+
+A Developer ID certificate is not required for a local ad-hoc packaging check:
+
+```bash
+rm -rf dist
+VERSION=0.0.0-dev BUILD_NUMBER=1 OUTPUT_DIR="$PWD/dist" SIGN_IDENTITY=- \
+  bash scripts/build-app.sh
+SIGN_IDENTITY=- \
+  bash scripts/create-dmg.sh \
+    "dist/asdf GUI.app" \
+    "dist/asdf-gui-0.0.0-dev-macos-$(uname -m).dmg"
+```
+
+The generated `.app` uses the same SwiftUI executable as `swift run`; the packaging scripts add the standard app bundle metadata, generated ICNS icon, ad-hoc or Developer ID signature, and DMG layout.
 
 ## Current features
 
@@ -36,8 +52,19 @@ You can also open `Package.swift` directly in Xcode.
 - Copy the current diagnostic output or generate a copyable diagnostic report containing the active asdf version, executable path, and `asdf info` output.
 - Native **Set Runtime Version** window (`⌘⇧V`).
 - Streaming/cancellable `Foundation.Process` command runner with no shell-string interpolation.
-- macOS GitHub Actions CI running the full `swift test` suite.
+- Reproducible `.app` and DMG packaging from SwiftPM without requiring an Xcode project.
+- Hardened Runtime / Developer ID signing and Apple `notarytool` automation for public releases.
+- Tag-driven GitHub Release workflow producing separate Apple Silicon and Intel DMGs plus SHA-256 checksums.
+- macOS GitHub Actions CI running tests and an ad-hoc app/DMG packaging verification.
+
+## Distribution
+
+Public releases are designed to be Developer ID-signed, Apple-notarized DMGs distributed outside the Mac App Store. The app intentionally does not enable App Sandbox because it needs to launch the user's local `asdf` executable and work with selected project directories.
+
+Release tags use `vMAJOR.MINOR.PATCH`. The release workflow builds and notarizes both `arm64` and `x86_64` artifacts, then publishes them to GitHub Releases. Apple credentials are supplied only through GitHub Actions secrets.
+
+See [`docs/RELEASING.md`](docs/RELEASING.md) for the signing/notarization secret names, local package verification, release flow, and troubleshooting.
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, diagnostics behavior, roadmap status, and a reusable Codex working agreement.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, diagnostics behavior, distribution policy, roadmap status, and a reusable Codex working agreement.
