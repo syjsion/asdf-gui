@@ -3,6 +3,7 @@ import Foundation
 enum VersionSelectionError: LocalizedError {
     case operationInProgress
     case executableUnavailable
+    case parentConfigurationUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -10,6 +11,8 @@ enum VersionSelectionError: LocalizedError {
             return "Another asdf write operation is currently running. Finish or cancel it before changing a configured version."
         case .executableUnavailable:
             return "asdf executable is not available. Configure it in Settings first."
+        case .parentConfigurationUnavailable:
+            return "No parent .tool-versions file exists above the selected project."
         }
     }
 }
@@ -29,6 +32,24 @@ extension AppModel {
             tool: tool,
             versions: [version]
         )
+    }
+
+    func setParentVersion(tool: String, version: String, project: ManagedProject) async throws {
+        guard let executableURL else { throw VersionSelectionError.executableUnavailable }
+        guard ParentToolVersionsLocator.nearestParentFile(from: project.url) != nil else {
+            throw VersionSelectionError.parentConfigurationUnavailable
+        }
+        guard beginExternalWriteOperation() else { throw VersionSelectionError.operationInProgress }
+        defer { endExternalWriteOperation() }
+
+        let versions = try ToolVersionsMutationService.validateVersions([version])
+        _ = try await AsdfService().setVersion(
+            executable: executableURL,
+            tool: tool,
+            versions: versions,
+            scope: .parent(project.url)
+        )
+        await reloadProjects()
     }
 
     func setHomeVersion(tool: String, version: String) async throws {
@@ -51,5 +72,9 @@ extension AppModel {
             .requirements
             .first(where: { $0.tool == tool })?
             .versions ?? []
+    }
+
+    func parentToolVersionsFile(for project: ManagedProject) -> URL? {
+        ParentToolVersionsLocator.nearestParentFile(from: project.url)
     }
 }
