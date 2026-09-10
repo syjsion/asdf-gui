@@ -9,11 +9,24 @@ final class VersionBrowserTests: XCTestCase {
             latest: "24.7.0"
         )
 
-        XCTAssertEqual(records.map(\.version), ["20.19.5", "22.19.0", "24.7.0", "18.20.8"])
-        XCTAssertFalse(records[0].isInstalled)
+        XCTAssertEqual(records.map(\.version), ["18.20.8", "22.19.0", "20.19.5", "24.7.0"])
+        XCTAssertTrue(records[0].isInstalled)
         XCTAssertTrue(records[1].isInstalled)
-        XCTAssertTrue(records[2].isLatest)
-        XCTAssertTrue(records[3].isInstalled)
+        XCTAssertFalse(records[2].isInstalled)
+        XCTAssertTrue(records[3].isLatest)
+    }
+
+    func testCatalogKeepsAllInstalledVersionsBeforeLargeAvailableCatalog() {
+        let available = (1...100).map { "1.0.\($0)" }
+        let records = VersionCatalog.records(
+            available: available,
+            installed: ["0.9.0", "1.0.50"],
+            latest: "1.0.100"
+        )
+
+        XCTAssertEqual(Array(records.prefix(2).map(\.version)), ["0.9.0", "1.0.50"])
+        XCTAssertTrue(records[0].isInstalled)
+        XCTAssertTrue(records[1].isInstalled)
     }
 
     func testCatalogKeepsLatestWhenNotReturnedByAvailableList() {
