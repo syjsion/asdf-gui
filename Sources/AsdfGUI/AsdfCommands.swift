@@ -5,6 +5,12 @@ struct AsdfCommands: Commands {
 
     var body: some Commands {
         CommandGroup(after: .appSettings) {
+            Button("Getting Started…") {
+                openWindow(id: "getting-started")
+            }
+
+            Divider()
+
             Button("Set Runtime Version…") {
                 openWindow(id: "version-selection")
             }
