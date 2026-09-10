@@ -4,7 +4,7 @@ This is the architecture and safety handoff for future development, especially w
 
 ## Product goal
 
-`asdf-gui` is a native macOS SwiftUI application that makes common asdf workflows discoverable without replacing asdf. The asdf CLI and `.tool-versions` remain the sources of truth. The product should explain state and relationships instead of mirroring every CLI command as a button.
+`asdf-gui` is a native macOS SwiftUI application that makes common asdf workflows discoverable without replacing asdf. The asdf CLI, `.tool-versions`, and machine-specific `.asdfrc` settings remain the sources of truth. The product should explain state and relationships instead of mirroring every CLI command as a button.
 
 ## Technical constraints
 
@@ -35,7 +35,7 @@ SwiftUI
           -> EnvironmentInspectorSection
       -> Plugins / Plugin Manager / Discovery
       -> feature windows: Getting Started, Set Runtime Version,
-         Diagnostics, Shell Integration, About, Settings
+         Diagnostics, Shell Integration, asdf Configuration, About, Settings
 
 Shared state
   -> AppModel (@MainActor)
@@ -44,7 +44,12 @@ Shared state
       -> ProjectService
       -> ToolVersionsMutationService
 
-Read-only feature models
+Structured file services
+  -> AsdfConfigService
+      -> ~/.asdfrc or absolute ASDF_CONFIG_FILE
+  -> ShellIntegrationService
+
+Read-only / feature models
   -> ResolutionModel
   -> EnvironmentInspectorModel
   -> RuntimeUpdateCenterModel
@@ -62,6 +67,7 @@ All writes share `AppModel.beginExternalWriteOperation()` / `endExternalWriteOpe
 
 - in-app asdf installation;
 - Shell Integration apply/remove;
+- structured `.asdfrc` save;
 - Project Install Missing;
 - project `.tool-versions` add/edit/reorder;
 - guarded delete-one-tool fallback;
@@ -84,6 +90,42 @@ Supported files:
 - Bash -> `~/.bash_profile`
 
 Only the app-owned marker block may be added/replaced/removed. Always preview before writing, reject malformed/one-sided markers, reread before mutation to detect races, write atomically, preserve permissions when possible, and never silently add completions.
+
+## Structured `.asdfrc` management
+
+asdf 0.20 defines machine-specific configuration in `${HOME}/.asdfrc` by default. `ASDF_CONFIG_FILE` may point to another location and must be absolute. The GUI may manage only these six documented standard keys:
+
+```text
+legacy_version_file = no
+use_release_candidates = no
+always_keep_download = no
+plugin_repository_last_check_duration = 60
+disable_plugin_short_name_repository = no
+concurrency = auto
+```
+
+Accepted GUI values:
+
+- boolean keys: `yes` / `no`;
+- `plugin_repository_last_check_duration`: `0`, `never`, or integer `1...999999999`;
+- `concurrency`: `auto` or a positive integer.
+
+`ASDF_CONCURRENCY`, when inherited by the app, takes precedence over the saved `concurrency` value and must be surfaced in the UI.
+
+asdf does not provide a CLI command to mutate `.asdfrc`, so `AsdfConfigService` is a deliberate direct-file exception. It is **not** a generic config editor. Rules:
+
+1. expose structured controls only; never expose a raw editable `.asdfrc` text view as the normal path;
+2. load the entire current file and parse only the six managed keys;
+3. missing managed keys use the documented defaults;
+4. duplicate managed keys are an error; never guess which one wins;
+5. invalid managed values are an error; never silently normalize unknown text;
+6. preserve comments, unknown settings and plugin hook lines;
+7. preserve inline comments on managed lines when replacing their values;
+8. before save, reread the file and require byte-for-byte equality with the loaded snapshot; abort if another process/user changed it;
+9. write atomically and restore existing POSIX permissions when possible;
+10. saving participates in the application-wide mutation gate;
+11. disabling the short-name repository must be explained as potentially affecting short-name plugin discovery/add while explicit Git URL installs remain available;
+12. never add support for arbitrary hook editing without an explicit architecture/safety review.
 
 ## Localization
 
@@ -163,9 +205,9 @@ Read-only commands:
 
 The inspector compares the selected project context against Home using parsed `KEY=value` rows. Split on the first `=` only because values may contain `=`. Environment data is transient and never persisted. The project/Home comparison is user-triggered; do not scan environments on startup.
 
-## Project Health
+## Project Health and repair actions
 
-Project Health is also on demand. It combines project snapshots with `asdf current` per project.
+Project Health is on demand. It combines project snapshots with `asdf current` per project.
 
 Surface at least:
 
@@ -178,6 +220,17 @@ Surface at least:
 - effective source `.tool-versions` paths, including parent/Home inheritance.
 
 A satisfied fallback means the requirement is healthy even when earlier fallback entries are missing. Health reports are transient and should be sorted with higher-severity projects first. Normal startup only shows a cheap local summary and must not execute `asdf current` for every project.
+
+Repair policy:
+
+- there is no automatic **Fix All**;
+- only deterministic issues receive an action;
+- `Plugin missing` may offer `asdf plugin add <tool>` after explicit confirmation;
+- `Runtime missing` may offer `asdf install <tool> <version>` for the first configured fallback whose status is exactly `.missing`;
+- runtime repair installs only the exact version and never rewrites Project/Parent/Home `.tool-versions`;
+- plugin/runtime repair reuses the existing operation models, global mutation gate, cancellation and logs;
+- `.unknown`, read failures, resolution failures and ambiguous states must never guess a repair;
+- if a plugin short-name install fails (for example because the short-name repository is disabled), surface the normal operation error and let the user use Plugin Manager / explicit Git URL discovery.
 
 ## Plugins
 
@@ -210,6 +263,8 @@ Persisted small preferences:
 - Getting Started presentation flag;
 - selected app language.
 
+`.asdfrc` is not copied into app preferences: the file itself is the source of truth and is reread whenever the structured editor opens/reloads.
+
 Everything else is recomputed from asdf/files/GitHub when needed.
 
 ## Distribution
@@ -225,14 +280,14 @@ Partial credentials fail closed. Both arm64 and x86_64 artifacts must succeed. S
 
 ## Roadmap status
 
-Completed foundation now includes native SwiftUI architecture, project `.tool-versions` management, runtime version management, plugin management/discovery, diagnostics, packaging/releases, missing-asdf bootstrap, Shell Integration, bilingual UI, About/update check, project search/sort, Resolution/shim exploration, Environment Inspector, Parent (`set -p`) inheritance editing, Runtime Update Center and Project Health.
+Completed foundation now includes native SwiftUI architecture, project `.tool-versions` management, runtime version management, plugin management/discovery, diagnostics, packaging/releases, missing-asdf bootstrap, Shell Integration, bilingual UI, About/update check, project search/sort, Resolution/shim exploration, Environment Inspector, Parent (`set -p`) inheritance editing, Runtime Update Center, Project Health, deterministic Project Health repairs, and structured `.asdfrc` management.
 
 Still valuable future work:
 
 - deliberate shell completion support / additional shells;
-- structured `.asdfrc` settings editor if implemented without raw-text editing;
-- richer Project Health remediation links/actions;
-- UI/accessibility polish and real-Mac smoke testing;
+- richer accessibility/keyboard navigation and macOS visual polish;
+- optional explicit Git-URL resolution for Health plugin repairs;
+- real-Mac smoke testing;
 - Developer ID/notarized release when credentials exist.
 
 ## Codex working agreement
@@ -243,23 +298,26 @@ When using Codex:
 2. Preserve SwiftUI/Foundation architecture and the single global mutation gate.
 3. Keep CLI construction/parsing in `AsdfService` and process lifecycle in `AsdfCommandRunner`.
 4. Keep normal `.tool-versions` writes behind `asdf set`; preserve the delete-one-tool exception safeguards.
-5. Keep version catalogs lazy and installed-first.
-6. Parent scope must preview the nearest parent file but write through `asdf set -p`.
-7. Update Center installs exact latest versions only; no automatic config rewrite or old-version deletion.
-8. Environment Inspector only wraps shimmed-command `asdf env`; never expose arbitrary execution from it.
-9. Project Health scans on demand and treats any usable fallback as satisfied.
-10. Preserve English/Simplified Chinese behavior for new visible UI.
-11. Do not weaken bootstrap checksum verification, shell-integration race protection, destructive confirmations or release-mode safety.
-12. Add/update tests for parsers and non-UI decisions.
-13. Update this document when commands, persistence, safety, architecture or distribution behavior changes.
-14. Run `swift test` and package verification before considering a change complete.
+5. Keep structured `.asdfrc` writes inside `AsdfConfigService`; only the six documented keys may be changed and unknown lines/hooks must be preserved.
+6. Keep version catalogs lazy and installed-first.
+7. Parent scope must preview the nearest parent file but write through `asdf set -p`.
+8. Update Center installs exact latest versions only; no automatic config rewrite or old-version deletion.
+9. Environment Inspector only wraps shimmed-command `asdf env`; never expose arbitrary execution from it.
+10. Project Health scans on demand and treats any usable fallback as satisfied.
+11. Project Health repair actions are per-issue, confirmed, deterministic and never a blind Fix All.
+12. Preserve English/Simplified Chinese behavior for new visible UI.
+13. Do not weaken bootstrap checksum verification, shell-integration race protection, structured config race protection, destructive confirmations or release-mode safety.
+14. Add/update tests for parsers and non-UI decisions.
+15. Update this document when commands, persistence, safety, architecture or distribution behavior changes.
+16. Run `swift test` and package verification before considering a change complete.
 
 Suggested prompt:
 
 ```text
 Read docs/DEVELOPMENT.md first and follow every architecture/safety contract.
 Keep asdf as source of truth, use typed AsdfService commands, preserve the single
-mutation gate, bilingual UI, installed-first catalogs and guarded .tool-versions
-writes. Add tests for parsers/decisions, run swift test and package verification,
-and update this document when behavior changes.
+mutation gate, bilingual UI, installed-first catalogs and guarded structured file
+writes. Health repairs must be deterministic per-issue actions, never a Fix All.
+Add tests, run swift test and package verification, and update this document when
+behavior changes.
 ```
