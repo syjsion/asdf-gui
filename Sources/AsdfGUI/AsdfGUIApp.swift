@@ -4,11 +4,13 @@ import SwiftUI
 @MainActor
 struct AsdfGUIApp: App {
     @State private var model = AppModel()
+    @State private var bootstrapModel = AsdfBootstrapModel()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootContentView()
                 .environment(model)
+                .environment(bootstrapModel)
                 .frame(minWidth: 900, minHeight: 580)
         }
         .commands {
@@ -36,6 +38,7 @@ struct AsdfGUIApp: App {
         Settings {
             SettingsView()
                 .environment(model)
+                .environment(bootstrapModel)
         }
     }
 }

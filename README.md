@@ -7,8 +7,23 @@ The project keeps asdf and `.tool-versions` as the sources of truth. The app is 
 ## Requirements
 
 - macOS 14+
-- Xcode / Swift toolchain capable of building the Swift 5.10 package
-- asdf installed locally
+- asdf may already be installed, or asdf GUI can install the latest official macOS binary for you
+- Xcode / a compatible Swift toolchain is only required when building from source
+
+## First launch / asdf setup
+
+If asdf GUI cannot find a usable `asdf` executable, the app opens a dedicated setup screen instead of showing empty runtime/plugin views.
+
+The **Install asdf** action:
+
+- queries the official `asdf-vm/asdf` GitHub latest-release API;
+- selects the matching macOS archive for the current app architecture (`arm64` or `amd64`);
+- requires and verifies the release asset's SHA-256 digest before extraction;
+- installs the binary to `~/.local/bin/asdf` without `sudo` or Homebrew;
+- verifies the downloaded executable with `asdf version` before activating it;
+- persists that exact executable path so Finder-launched asdf GUI does not depend on your interactive shell `PATH`.
+
+The installer does **not** edit `~/.zshrc`, `~/.bashrc`, or other shell startup files. Terminal use of asdf still requires the normal asdf shims PATH setup documented by asdf. You can also choose an existing executable manually from Settings.
 
 ## Run from source
 
@@ -49,6 +64,7 @@ The packaging scripts create the standard `.app` bundle, generated ICNS icon, ad
 ## Current features
 
 - Detect asdf in common installation locations and allow a persisted custom executable path.
+- Dedicated missing-asdf setup experience with verified one-click installation from official GitHub release assets.
 - Overview of asdf version, executable, plugins, and managed projects.
 - Add/remove managed project folders and read their `.tool-versions` files without duplicating configuration into app storage.
 - Preserve comments and ordered fallback chains when interpreting `.tool-versions`.
@@ -87,4 +103,4 @@ The latter exists so tools that can create branches but not Git tags can still t
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, diagnostics behavior, release modes, roadmap status, and a reusable Codex working agreement.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before making architectural changes or using Codex for follow-up development. It documents architecture boundaries, command contracts, destructive-action policies, project/version/plugin semantics, diagnostics behavior, bootstrap/install policy, release modes, roadmap status, and a reusable Codex working agreement.
