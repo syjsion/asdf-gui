@@ -24,28 +24,23 @@ extension AppModel {
     }
 
     func setProjectVersion(tool: String, version: String, project: ManagedProject) async throws {
-        guard !hasActiveOperation else { throw VersionSelectionError.operationInProgress }
-        guard let executableURL else { throw VersionSelectionError.executableUnavailable }
-
-        _ = try await AsdfService().setVersion(
-            executable: executableURL,
+        try await setProjectToolVersions(
+            project: project,
             tool: tool,
-            versions: [version],
-            scope: .project(project.url)
+            versions: [version]
         )
-
-        refreshProjects()
-        await refreshInstalledVersions()
     }
 
     func setHomeVersion(tool: String, version: String) async throws {
-        guard !hasActiveOperation else { throw VersionSelectionError.operationInProgress }
         guard let executableURL else { throw VersionSelectionError.executableUnavailable }
+        guard beginExternalWriteOperation() else { throw VersionSelectionError.operationInProgress }
+        defer { endExternalWriteOperation() }
 
+        let versions = try ToolVersionsMutationService.validateVersions([version])
         _ = try await AsdfService().setVersion(
             executable: executableURL,
             tool: tool,
-            versions: [version],
+            versions: versions,
             scope: .home
         )
     }
