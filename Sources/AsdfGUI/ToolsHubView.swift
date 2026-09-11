@@ -77,6 +77,15 @@ struct ToolsHubView: View {
                 GroupBox(t("Runtime management", "运行时管理")) {
                     toolGrid([
                         ToolAction(
+                            title: t("Add Runtime", "添加运行时"),
+                            description: t(
+                                "Guided plugin + exact version installation for Node.js, Python, Ruby, Go, Java, and more.",
+                                "通过向导安装 Node.js、Python、Ruby、Go、Java 等运行时，并自动处理插件与精确版本。"
+                            ),
+                            icon: "plus.circle.fill",
+                            action: { openWindow(id: "runtime-setup") }
+                        ),
+                        ToolAction(
                             title: t("Manage Plugins", "管理插件"),
                             description: t("Discover, add, update, or remove asdf plugins.", "发现、添加、更新或移除 asdf 插件。"),
                             icon: "shippingbox",
