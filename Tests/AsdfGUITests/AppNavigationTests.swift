@@ -4,8 +4,8 @@ import XCTest
 final class AppNavigationTests: XCTestCase {
     @MainActor
     func testSectionsHaveStableKeyboardShortcutOrder() {
-        XCTAssertEqual(AppSection.allCases.map(\.shortcutNumber), ["1", "2", "3", "4", "5"])
-        XCTAssertEqual(AppSection.allCases.map(\.rawValue), ["overview", "projects", "versions", "resolution", "plugins"])
+        XCTAssertEqual(AppSection.allCases.map(\.shortcutNumber), ["1", "2", "3", "4", "5", "6"])
+        XCTAssertEqual(AppSection.allCases.map(\.rawValue), ["overview", "projects", "versions", "resolution", "plugins", "tools"])
     }
 
     @MainActor
