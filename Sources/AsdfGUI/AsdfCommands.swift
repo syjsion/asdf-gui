@@ -18,6 +18,13 @@ struct AsdfCommands: Commands {
             }
         }
 
+        CommandGroup(after: .newItem) {
+            Button(language == .simplifiedChinese ? "添加运行时…" : "Add Runtime…") {
+                openWindow(id: "runtime-setup")
+            }
+            .keyboardShortcut("n", modifiers: [.command])
+        }
+
         CommandMenu(language.localized("Navigate")) {
             Button(language.localized("Overview")) { navigation.show(.overview) }
                 .keyboardShortcut("1", modifiers: [.command])
