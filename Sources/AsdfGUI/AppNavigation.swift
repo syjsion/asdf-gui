@@ -7,6 +7,7 @@ enum AppSection: String, CaseIterable, Identifiable, Sendable {
     case versions
     case resolution
     case plugins
+    case tools
 
     var id: String { rawValue }
 
@@ -17,6 +18,7 @@ enum AppSection: String, CaseIterable, Identifiable, Sendable {
         case .versions: "Versions"
         case .resolution: "Resolution"
         case .plugins: "Plugins"
+        case .tools: "Settings"
         }
     }
 
@@ -27,6 +29,7 @@ enum AppSection: String, CaseIterable, Identifiable, Sendable {
         case .versions: "square.stack.3d.up"
         case .resolution: "arrow.triangle.branch"
         case .plugins: "shippingbox"
+        case .tools: "gearshape.2"
         }
     }
 
@@ -37,6 +40,7 @@ enum AppSection: String, CaseIterable, Identifiable, Sendable {
         case .versions: "3"
         case .resolution: "4"
         case .plugins: "5"
+        case .tools: "6"
         }
     }
 }
