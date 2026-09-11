@@ -211,6 +211,16 @@ final class RuntimeSetupModel {
             partialErrors.append("Available versions: \(error.localizedDescription)")
         }
 
+        do {
+            let installed = try await service.installedVersions(executable: executable, tool: tool)
+            appModel.installedVersionsByTool[tool] = installed
+        } catch is CancellationError {
+            phase = .idle
+            return
+        } catch {
+            partialErrors.append("Installed versions: \(error.localizedDescription)")
+        }
+
         if selectedVersion == nil {
             selectedVersion = latestVersion ?? availableVersions.last
         }
@@ -248,11 +258,16 @@ final class RuntimeSetupModel {
             defer { appModel.endExternalWriteOperation() }
 
             do {
-                if RuntimeSetupPlanner.shouldInstallVersion(
-                    tool: tool,
-                    version: version,
-                    installedVersionsByTool: appModel.installedVersionsByTool
-                ) {
+                // Re-read installed state immediately before the write. The wizard can be
+                // opened before the Versions page has populated its presentation cache,
+                // and a terminal may also have changed asdf state since the app launched.
+                let installedVersions = try await self.service.installedVersions(
+                    executable: executable,
+                    tool: tool
+                )
+                appModel.installedVersionsByTool[tool] = installedVersions
+
+                if !installedVersions.contains(version) {
                     self.append("\n$ asdf install \(tool) \(version)\n")
                     _ = try await self.service.installVersion(
                         executable: executable,
