@@ -52,10 +52,14 @@ enum MacArchitecture: String, Sendable {
 struct AppReleaseAsset: Decodable, Equatable, Sendable {
     let name: String
     let browserDownloadURL: URL
+    let digest: String?
+    let size: Int?
 
     enum CodingKeys: String, CodingKey {
         case name
         case browserDownloadURL = "browser_download_url"
+        case digest
+        case size
     }
 }
 
@@ -83,7 +87,10 @@ struct AvailableAppUpdate: Equatable, Sendable {
     let version: String
     let prerelease: Bool
     let releaseURL: URL
+    let assetName: String?
     let downloadURL: URL?
+    let digest: String?
+    let downloadSize: Int?
 }
 
 enum AppUpdateResolution: Equatable, Sendable {
@@ -122,7 +129,10 @@ enum AppUpdateResolver {
                 version: latest.tagName,
                 prerelease: latest.prerelease,
                 releaseURL: latest.htmlURL,
-                downloadURL: matchingAsset?.browserDownloadURL
+                assetName: matchingAsset?.name,
+                downloadURL: matchingAsset?.browserDownloadURL,
+                digest: matchingAsset?.digest,
+                downloadSize: matchingAsset?.size
             )
         )
     }
@@ -191,6 +201,9 @@ enum AppUpdateState: Equatable {
     case checking
     case upToDate(latestVersion: String?)
     case updateAvailable(AvailableAppUpdate)
+    case downloading(AvailableAppUpdate)
+    case readyToInstall(PreparedAppUpdate)
+    case installing(String)
     case failed(String)
 }
 
@@ -198,28 +211,70 @@ enum AppUpdateState: Equatable {
 @Observable
 final class AppUpdateModel {
     var state: AppUpdateState = .idle
-    private let checker: AppUpdateChecker
+    private(set) var availableUpdate: AvailableAppUpdate?
 
-    init(checker: AppUpdateChecker = AppUpdateChecker()) {
+    private let checker: AppUpdateChecker
+    private let installer: AppUpdateInstaller
+
+    init(
+        checker: AppUpdateChecker = AppUpdateChecker(),
+        installer: AppUpdateInstaller = AppUpdateInstaller()
+    ) {
         self.checker = checker
+        self.installer = installer
+    }
+
+    var isBusy: Bool {
+        switch state {
+        case .checking, .downloading, .installing:
+            true
+        case .idle, .upToDate, .updateAvailable, .readyToInstall, .failed:
+            false
+        }
     }
 
     var isChecking: Bool { state == .checking }
 
     func check() async {
-        guard !isChecking else { return }
+        guard !isBusy else { return }
         state = .checking
         do {
             switch try await checker.check(currentVersion: AppBuildInfo.version) {
             case .upToDate(let latestVersion):
+                availableUpdate = nil
                 state = .upToDate(latestVersion: latestVersion)
             case .updateAvailable(let update):
+                availableUpdate = update
                 state = .updateAvailable(update)
             }
         } catch is CancellationError {
             state = .idle
         } catch {
             state = .failed(error.localizedDescription)
+        }
+    }
+
+    func downloadAndPrepare() async {
+        guard !isBusy, let update = availableUpdate else { return }
+        state = .downloading(update)
+        do {
+            let prepared = try await installer.prepare(update: update)
+            state = .readyToInstall(prepared)
+        } catch is CancellationError {
+            state = .updateAvailable(update)
+        } catch {
+            state = .failed(error.localizedDescription)
+        }
+    }
+
+    func beginInstallation() throws {
+        guard case .readyToInstall(let prepared) = state else { return }
+        do {
+            try installer.launchReplacementHelper(for: prepared)
+            state = .installing(prepared.update.version)
+        } catch {
+            state = .failed(error.localizedDescription)
+            throw error
         }
     }
 }
