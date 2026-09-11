@@ -18,17 +18,22 @@ struct PluginsHubView: View {
                     Text(t("Plugins", "插件"))
                         .font(.largeTitle.bold())
                     Text(t(
-                        "Install, discover, update, and remove asdf plugins from the visible GUI.",
-                        "直接在 GUI 中安装、发现、更新和移除 asdf 插件。"
+                        "Plugins are the adapters asdf uses for each runtime. Most users can install runtimes with Add Runtime and let the app handle plugin setup automatically.",
+                        "插件是 asdf 管理各类运行时所需的适配器。多数情况下直接使用“添加运行时”即可，由应用自动处理插件安装。"
                     ))
                     .foregroundStyle(.secondary)
                 }
                 Spacer()
 
-                Button(t("Add / Manage Plugins", "添加 / 管理插件"), systemImage: "plus.circle") {
+                Button(t("Add Runtime", "添加运行时"), systemImage: "plus.circle.fill") {
+                    openWindow(id: "runtime-setup")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.hasActiveOperation)
+
+                Button(t("Manage Plugins", "管理插件"), systemImage: "shippingbox") {
                     openWindow(id: "plugin-manager")
                 }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(model.hasActiveOperation)
 
                 Button(t("Refresh", "刷新"), systemImage: "arrow.clockwise") {
@@ -38,26 +43,26 @@ struct PluginsHubView: View {
             }
 
             GroupBox {
-                HStack(alignment: .center, spacing: 18) {
+                HStack(alignment: .center, spacing: 16) {
+                    Image(systemName: "sparkles")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(t("Install a new runtime", "安装新的运行时"))
+                        Text(t("New to asdf plugins?", "不熟悉 asdf 插件？"))
                             .font(.headline)
                         Text(t(
-                            "First add the runtime's plugin, then choose its exact version in Versions. For Node.js, install the nodejs plugin first.",
-                            "先添加运行时对应的插件，再到“版本”中选择并安装具体版本。例如安装 Node.js 时，先安装 nodejs 插件。"
+                            "You do not need to install a plugin manually just to get Node.js, Python, Ruby, Go, or Java. Add Runtime combines plugin setup, exact version installation, and optional project/Home configuration.",
+                            "如果只是想安装 Node.js、Python、Ruby、Go 或 Java，不需要先手动理解插件。使用“添加运行时”即可完成插件、精确版本安装，以及可选的项目/Home 配置。"
                         ))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(t("1. Add Plugin", "1. 添加插件"), systemImage: "shippingbox.and.arrow.down") {
-                        openWindow(id: "plugin-manager")
+                    Button(t("Add Runtime", "添加运行时"), systemImage: "arrow.right.circle") {
+                        openWindow(id: "runtime-setup")
                     }
                     .disabled(model.hasActiveOperation)
-                    Button(t("2. Browse Versions", "2. 浏览版本"), systemImage: "square.stack.3d.up") {
-                        navigation.show(.versions)
-                    }
-                    .disabled(model.plugins.isEmpty)
                 }
             }
 
@@ -67,14 +72,19 @@ struct PluginsHubView: View {
                         t("No plugins installed", "尚未安装插件"),
                         systemImage: "shippingbox",
                         description: Text(t(
-                            "Add a plugin such as nodejs, python, ruby, or golang to start installing runtime versions.",
-                            "先添加 nodejs、python、ruby、golang 等插件，然后即可安装对应运行时版本。"
+                            "Use Add Runtime for the guided path, or open Manage Plugins when you specifically want to work with plugin repositories.",
+                            "推荐使用“添加运行时”向导；只有需要直接管理插件仓库时，再打开“管理插件”。"
                         ))
                     )
-                    Button(t("Add Your First Plugin", "添加第一个插件"), systemImage: "plus") {
-                        openWindow(id: "plugin-manager")
+                    HStack(spacing: 10) {
+                        Button(t("Add Runtime", "添加运行时"), systemImage: "plus") {
+                            openWindow(id: "runtime-setup")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        Button(t("Manage Plugins", "管理插件"), systemImage: "shippingbox") {
+                            openWindow(id: "plugin-manager")
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -90,7 +100,7 @@ struct PluginsHubView: View {
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
-                        TableColumn(t("Versions", "版本")) { plugin in
+                        TableColumn(t("Runtime Versions", "运行时版本")) { plugin in
                             Button(t("Open Versions", "打开版本")) {
                                 navigation.showVersions(tool: plugin.name)
                             }

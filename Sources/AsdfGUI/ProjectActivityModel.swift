@@ -8,11 +8,21 @@ final class ProjectActivityModel {
     private(set) var lastUsedDates: [String: Date]
 
     private let preferences: PreferencesStore
+    @ObservationIgnored private var preferenceObserver: NSObjectProtocol?
 
     init(preferences: PreferencesStore = PreferencesStore()) {
         self.preferences = preferences
         self.favoritePaths = preferences.favoriteProjectPaths()
         self.lastUsedDates = preferences.projectLastUsedDates()
+        self.preferenceObserver = NotificationCenter.default.addObserver(
+            forName: .asdfGUIProjectActivityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.reload()
+            }
+        }
     }
 
     func reload() {

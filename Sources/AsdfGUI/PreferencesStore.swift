@@ -1,5 +1,9 @@
 import Foundation
 
+extension Notification.Name {
+    static let asdfGUIProjectActivityDidChange = Notification.Name("asdfGUIProjectActivityDidChange")
+}
+
 struct PreferencesStore {
     private enum Key {
         static let asdfExecutablePath = "asdfExecutablePath"
@@ -44,6 +48,7 @@ struct PreferencesStore {
 
     func setFavoriteProjectPaths(_ paths: Set<String>) {
         defaults.set(paths.sorted(), forKey: Key.favoriteProjectPaths)
+        NotificationCenter.default.post(name: .asdfGUIProjectActivityDidChange, object: nil)
     }
 
     func projectLastUsedDates() -> [String: Date] {
@@ -62,5 +67,6 @@ struct PreferencesStore {
     func setProjectLastUsedDates(_ dates: [String: Date]) {
         let raw = dates.mapValues(\.timeIntervalSince1970)
         defaults.set(raw, forKey: Key.projectLastUsedDates)
+        NotificationCenter.default.post(name: .asdfGUIProjectActivityDidChange, object: nil)
     }
 }

@@ -71,6 +71,23 @@ struct LocalizedAppRootView: View {
             case .tools: ToolsHubView()
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    openWindow(id: "runtime-setup")
+                } label: {
+                    Label(
+                        language == .simplifiedChinese ? "添加运行时" : "Add Runtime",
+                        systemImage: "plus.circle.fill"
+                    )
+                }
+                .keyboardShortcut("n", modifiers: [.command])
+                .disabled(model.hasActiveOperation || model.executableURL == nil)
+                .help(language == .simplifiedChinese
+                      ? "安装 Node.js、Python、Ruby、Go、Java 或其他 asdf 运行时"
+                      : "Install Node.js, Python, Ruby, Go, Java, or another asdf runtime")
+            }
+        }
         .task { await model.refresh() }
     }
 

@@ -26,6 +26,15 @@ struct AsdfGUIApp: App {
             AsdfCommands(navigation: navigation)
         }
 
+        Window(language == .simplifiedChinese ? "添加运行时" : "Add Runtime", id: "runtime-setup") {
+            RuntimeSetupView()
+                .environment(model)
+                .environment(navigation)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
+        }
+        .defaultSize(width: 980, height: 720)
+
         Window("Getting Started", id: "getting-started") {
             GettingStartedView()
                 .environment(model)
@@ -96,7 +105,7 @@ struct AsdfGUIApp: App {
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
-        .defaultSize(width: 600, height: 500)
+        .defaultSize(width: 640, height: 560)
         .windowResizability(.contentSize)
 
         Settings {
