@@ -195,14 +195,19 @@ final class ProjectHealthModel {
 @MainActor
 struct ProjectHealthView: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(AppNavigationModel.self) private var appNavigation
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var model = ProjectHealthModel()
     @State private var pluginOperations = PluginManagementModel()
+    @State private var pluginDiscovery = PluginDiscoveryModel()
     @State private var issuesOnly = false
     @State private var pendingFix: ProjectHealthFix?
     @State private var pendingProject: ManagedProject?
+    @State private var resolvedPluginEntry: AsdfPluginCatalogEntry?
     @State private var isShowingFixConfirmation = false
+    @State private var isPreparingFix = false
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
@@ -222,13 +227,13 @@ struct ProjectHealthView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                if model.isLoading { ProgressView().controlSize(.small) }
+                if model.isLoading || isPreparingFix { ProgressView().controlSize(.small) }
                 Toggle(language.localized("Issues only"), isOn: $issuesOnly)
                     .toggleStyle(.checkbox)
                 Button(language.localized("Refresh"), systemImage: "arrow.clockwise") {
                     Task { await refreshHealth() }
                 }
-                .disabled(model.isLoading || appModel.hasActiveOperation || pluginOperations.isBusy)
+                .disabled(model.isLoading || isPreparingFix || appModel.hasActiveOperation || pluginOperations.isBusy)
                 Button(language.localized("Close")) { dismiss() }
             }
 
@@ -253,7 +258,7 @@ struct ProjectHealthView: View {
             }
         }
         .padding(24)
-        .frame(minWidth: 860, minHeight: 640)
+        .frame(minWidth: 900, minHeight: 660)
         .task { await model.load(appModel: appModel) }
         .onChange(of: appModel.plugins) { _, _ in
             Task { await model.load(appModel: appModel) }
@@ -273,8 +278,7 @@ struct ProjectHealthView: View {
                 apply(fix)
             }
             Button(language.localized("Cancel"), role: .cancel) {
-                pendingFix = nil
-                pendingProject = nil
+                resetPendingFix()
             }
         } message: { fix in
             Text(fixConfirmationMessage(fix))
@@ -326,6 +330,12 @@ struct ProjectHealthView: View {
                     Label(report.project.name, systemImage: report.isHealthy ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
                         .font(.headline)
                     Spacer()
+                    Button(language.localized("Show in Projects"), systemImage: "arrow.right.circle") {
+                        appNavigation.showProject(report.project)
+                        dismiss()
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityHint(language.localized("Open Projects and filter to this project."))
                     Text(report.project.path)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -340,8 +350,15 @@ struct ProjectHealthView: View {
                         HStack(alignment: .top, spacing: 8) {
                             Image(systemName: symbol(issue.severity))
                                 .foregroundStyle(style(issue.severity))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(localizedIssueTitle(issue.title)).fontWeight(.medium)
+                                .accessibilityHidden(true)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(spacing: 8) {
+                                    Text(severityTitle(issue.severity))
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(style(issue.severity))
+                                    Text(localizedIssueTitle(issue.title))
+                                        .fontWeight(.medium)
+                                }
                                 Text(localizedIssueDetail(issue.detail))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
@@ -349,15 +366,26 @@ struct ProjectHealthView: View {
                             }
                             Spacer(minLength: 12)
                             if let fix = issue.fix {
-                                Button(fixButtonTitle(fix)) {
-                                    pendingFix = fix
-                                    pendingProject = report.project
-                                    isShowingFixConfirmation = true
+                                HStack(spacing: 8) {
+                                    Button(contextButtonTitle(fix)) {
+                                        openContext(for: fix)
+                                    }
+                                    .buttonStyle(.borderless)
+
+                                    Button(fixButtonTitle(fix)) {
+                                        prepareFix(fix, project: report.project)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .disabled(
+                                        model.isLoading
+                                            || isPreparingFix
+                                            || appModel.hasActiveOperation
+                                            || pluginOperations.isBusy
+                                    )
                                 }
-                                .buttonStyle(.bordered)
-                                .disabled(model.isLoading || appModel.hasActiveOperation || pluginOperations.isBusy)
                             }
                         }
+                        .accessibilityElement(children: .contain)
                     }
                 }
 
@@ -378,16 +406,56 @@ struct ProjectHealthView: View {
         }
     }
 
-    private func apply(_ fix: ProjectHealthFix) {
-        defer {
-            pendingFix = nil
-            pendingProject = nil
-        }
+    private func prepareFix(_ fix: ProjectHealthFix, project: ManagedProject) {
+        pendingFix = fix
+        pendingProject = project
+        resolvedPluginEntry = nil
+
         switch fix {
         case .installPlugin(let tool):
-            pluginOperations.addPlugin(name: tool, gitURL: nil, appModel: appModel)
+            Task {
+                isPreparingFix = true
+                if pluginDiscovery.catalog.isEmpty {
+                    await pluginDiscovery.load(appModel: appModel)
+                }
+                resolvedPluginEntry = PluginCatalogResolver.exactEntry(for: tool, in: pluginDiscovery.catalog)
+                isPreparingFix = false
+                isShowingFixConfirmation = true
+            }
+        case .installRuntime:
+            isShowingFixConfirmation = true
+        }
+    }
+
+    private func apply(_ fix: ProjectHealthFix) {
+        defer { resetPendingFix() }
+        switch fix {
+        case .installPlugin(let tool):
+            if let entry = resolvedPluginEntry {
+                pluginOperations.addPlugin(name: entry.name, gitURL: entry.url, appModel: appModel)
+            } else {
+                pluginOperations.addPlugin(name: tool, gitURL: nil, appModel: appModel)
+            }
         case .installRuntime(let tool, let version):
             appModel.installVersionFromBrowser(tool: tool, version: version)
+        }
+    }
+
+    private func resetPendingFix() {
+        pendingFix = nil
+        pendingProject = nil
+        resolvedPluginEntry = nil
+        isPreparingFix = false
+    }
+
+    private func openContext(for fix: ProjectHealthFix) {
+        switch fix {
+        case .installPlugin:
+            openWindow(id: "plugin-manager")
+            dismiss()
+        case .installRuntime(let tool, _):
+            appNavigation.showVersions(tool: tool)
+            dismiss()
         }
     }
 
@@ -405,18 +473,42 @@ struct ProjectHealthView: View {
         }
     }
 
+    private func contextButtonTitle(_ fix: ProjectHealthFix) -> String {
+        switch fix {
+        case .installPlugin:
+            return language.localized("Plugin Manager")
+        case .installRuntime:
+            return language.localized("View Versions")
+        }
+    }
+
     private func fixConfirmationMessage(_ fix: ProjectHealthFix) -> String {
+        let projectSuffix: String
+        if let pendingProject {
+            projectSuffix = language == .simplifiedChinese
+                ? "\n\n项目：\(pendingProject.name)"
+                : "\n\nProject: \(pendingProject.name)"
+        } else {
+            projectSuffix = ""
+        }
+
         switch fix {
         case .installPlugin(let tool):
-            if language == .simplifiedChinese {
-                return "将执行 asdf plugin add \(tool)。安装使用 asdf 的 short-name 仓库；不会修改任何项目的 .tool-versions。"
+            if let entry = resolvedPluginEntry, let url = entry.url {
+                if language == .simplifiedChinese {
+                    return "已从 asdf 插件目录精确匹配到 \(entry.name)。将使用明确的 Git URL 安装：\n\(url)\n\n不会修改任何项目的 .tool-versions。\(projectSuffix)"
+                }
+                return "An exact match was found in the asdf plugin catalog. The plugin will be installed from this explicit Git URL:\n\(url)\n\nNo project .tool-versions file will be changed.\(projectSuffix)"
             }
-            return "This runs asdf plugin add \(tool) using asdf's short-name repository. It will not modify any project's .tool-versions."
+            if language == .simplifiedChinese {
+                return "插件目录没有提供可用的精确 Git URL，将回退执行 asdf plugin add \(tool)，使用 asdf short-name 仓库。不会修改任何项目的 .tool-versions。\(projectSuffix)"
+            }
+            return "No usable exact Git URL was found in the plugin catalog. This falls back to asdf plugin add \(tool) using asdf's short-name repository. No project .tool-versions file will be changed.\(projectSuffix)"
         case .installRuntime(let tool, let version):
             if language == .simplifiedChinese {
-                return "将执行 asdf install \(tool) \(version)。只安装该精确版本，不会修改项目、父级或 Home 的 .tool-versions。"
+                return "将执行 asdf install \(tool) \(version)。只安装该精确版本，不会修改项目、父级或 Home 的 .tool-versions。\(projectSuffix)"
             }
-            return "This runs asdf install \(tool) \(version). It installs only that exact runtime and does not rewrite Project, Parent, or Home .tool-versions."
+            return "This runs asdf install \(tool) \(version). It installs only that exact runtime and does not rewrite Project, Parent, or Home .tool-versions.\(projectSuffix)"
         }
     }
 
@@ -426,6 +518,14 @@ struct ProjectHealthView: View {
         case .succeeded: return language.localized("Plugin installed")
         case .failed: return language.localized("Plugin installation failed")
         case .cancelled: return language.localized("Plugin installation cancelled")
+        }
+    }
+
+    private func severityTitle(_ severity: ProjectHealthSeverity) -> String {
+        switch severity {
+        case .info: language.localized("Info")
+        case .warning: language.localized("Warning")
+        case .error: language.localized("Error")
         }
     }
 
