@@ -56,8 +56,8 @@ struct LocalizedAppRootView: View {
                     Image(systemName: item.icon)
                 }
                 .tag(item)
-                .accessibilityLabel(language.localized(item.titleKey))
-                .accessibilityHint(shortcutHint(item))
+                .accessibilityLabel(Text(language.localized(item.titleKey)))
+                .accessibilityHint(Text(shortcutHint(item)))
             }
             .navigationTitle("asdf GUI")
             .navigationSplitViewColumnWidth(min: 170, ideal: 205, max: 240)
