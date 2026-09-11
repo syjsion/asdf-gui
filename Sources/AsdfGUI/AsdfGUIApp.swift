@@ -6,6 +6,7 @@ struct AsdfGUIApp: App {
     @State private var model = AppModel()
     @State private var bootstrapModel = AsdfBootstrapModel()
     @State private var navigation = AppNavigationModel()
+    @State private var projectActivity = ProjectActivityModel()
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
 
     private var language: AppLanguage {
@@ -18,6 +19,7 @@ struct AsdfGUIApp: App {
                 .environment(model)
                 .environment(bootstrapModel)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
                 .frame(minWidth: 900, minHeight: 580)
@@ -30,6 +32,7 @@ struct AsdfGUIApp: App {
             GettingStartedView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -39,6 +42,7 @@ struct AsdfGUIApp: App {
             VersionSelectionView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -48,6 +52,7 @@ struct AsdfGUIApp: App {
             PluginManagerView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -57,6 +62,7 @@ struct AsdfGUIApp: App {
             DiagnosticsView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -66,6 +72,7 @@ struct AsdfGUIApp: App {
             ShellIntegrationView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -75,6 +82,7 @@ struct AsdfGUIApp: App {
             ShellCompletionView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -84,6 +92,7 @@ struct AsdfGUIApp: App {
             AsdfConfigurationView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -93,6 +102,7 @@ struct AsdfGUIApp: App {
             AboutView()
                 .environment(model)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -104,6 +114,7 @@ struct AsdfGUIApp: App {
                 .environment(model)
                 .environment(bootstrapModel)
                 .environment(navigation)
+                .environment(projectActivity)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
