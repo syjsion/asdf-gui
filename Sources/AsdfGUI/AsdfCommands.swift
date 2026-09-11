@@ -64,6 +64,11 @@ struct AsdfCommands: Commands {
                 openWindow(id: "shell-integration")
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
+
+            Button(language == .simplifiedChinese ? "Shell 自动补全…" : "Shell Completions…") {
+                openWindow(id: "shell-completions")
+            }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
         }
     }
 }
