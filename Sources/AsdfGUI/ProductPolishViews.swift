@@ -82,13 +82,13 @@ struct ProjectsPolishedView: View {
                         Image(systemName: "arrow.up.arrow.down")
                     }
                 }
-                .accessibilityHint(language.localized("Choose how managed projects are ordered."))
+                .accessibilityHint(Text(language.localized("Choose how managed projects are ordered.")))
 
                 Button("Add Project", systemImage: "plus") {
                     isAddingProject = true
                 }
                 .disabled(model.hasActiveOperation)
-                .accessibilityHint(language.localized("Choose one or more project folders to manage."))
+                .accessibilityHint(Text(language.localized("Choose one or more project folders to manage.")))
             }
 
             if let importerError {
@@ -129,7 +129,7 @@ struct ProjectsPolishedView: View {
                 Task { await model.reloadProjects() }
             }
             .disabled(model.hasActiveOperation)
-            .accessibilityHint(language.localized("Reload project files and installed runtime status."))
+            .accessibilityHint(Text(language.localized("Reload project files and installed runtime status.")))
         }
         .fileImporter(
             isPresented: $isAddingProject,
@@ -196,13 +196,13 @@ private struct ProjectCard: View {
                             NSWorkspace.shared.activateFileViewerSelecting([snapshot.project.url])
                         }
                         .buttonStyle(.borderless)
-                        .accessibilityHint(language.localized("Reveal this managed project folder in Finder."))
+                        .accessibilityHint(Text(language.localized("Reveal this managed project folder in Finder.")))
 
                         Button("Manage .tool-versions", systemImage: "slider.horizontal.3") {
                             isManagingToolVersions = true
                         }
                         .disabled(model.hasActiveOperation)
-                        .accessibilityHint(language.localized("Open the structured .tool-versions editor for this project."))
+                        .accessibilityHint(Text(language.localized("Open the structured .tool-versions editor for this project.")))
 
                         Button(role: .destructive) {
                             model.removeProject(snapshot.project)
@@ -221,7 +221,7 @@ private struct ProjectCard: View {
             .padding(4)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(snapshot.project.name)
+        .accessibilityLabel(Text(snapshot.project.name))
         .sheet(isPresented: $isManagingToolVersions) {
             ProjectToolVersionsManagerView(project: snapshot.project)
         }
@@ -296,7 +296,7 @@ private struct ProjectRequirementLine: View {
                     .accessibilityHidden(true)
             }
             .frame(minWidth: 120, idealWidth: 150, maxWidth: 180, alignment: .leading)
-            .accessibilityLabel(requirementAccessibilityLabel)
+            .accessibilityLabel(Text(requirementAccessibilityLabel))
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(requirement.versions.enumerated()), id: \.offset) { index, version in
@@ -319,7 +319,7 @@ private struct ProjectRequirementLine: View {
                         }
                     }
                     .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(versionAccessibilityLabel(version: version, status: status, isFallback: index > 0))
+                    .accessibilityLabel(Text(versionAccessibilityLabel(version: version, status: status, isFallback: index > 0)))
                 }
 
                 if let error = model.versionLookupErrors[requirement.tool] {
