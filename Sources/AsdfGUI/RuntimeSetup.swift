@@ -92,6 +92,7 @@ final class RuntimeSetupModel {
 
     func loadCatalog(appModel: AppModel, force: Bool = false) async {
         guard force || catalog.isEmpty else { return }
+        guard !isBusy || phase == .loadingCatalog else { return }
         guard let executable = appModel.executableURL else {
             catalogError = "asdf executable is not available."
             return
@@ -112,6 +113,7 @@ final class RuntimeSetupModel {
     }
 
     func select(tool: String, appModel: AppModel) {
+        guard !isBusy else { return }
         let normalized = tool.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { return }
         selectedTool = normalized
@@ -184,6 +186,7 @@ final class RuntimeSetupModel {
     func loadVersions(appModel: AppModel) async {
         guard let tool = selectedTool,
               let executable = appModel.executableURL else { return }
+        guard phase != .installingRuntime && phase != .installingPlugin else { return }
         guard !RuntimeSetupPlanner.needsPluginInstall(tool: tool, plugins: appModel.plugins) else {
             phase = .idle
             return
@@ -258,9 +261,6 @@ final class RuntimeSetupModel {
             defer { appModel.endExternalWriteOperation() }
 
             do {
-                // Re-read installed state immediately before the write. The wizard can be
-                // opened before the Versions page has populated its presentation cache,
-                // and a terminal may also have changed asdf state since the app launched.
                 let installedVersions = try await self.service.installedVersions(
                     executable: executable,
                     tool: tool
