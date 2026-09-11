@@ -20,7 +20,7 @@ struct ShellCompletionPlan: Sendable {
     let status: ShellCompletionStatus
 }
 
-enum ShellCompletionError: LocalizedError {
+enum ShellCompletionError: LocalizedError, Equatable {
     case malformedManagedBlock
     case configurationChanged
     case completionFileChanged
@@ -59,12 +59,18 @@ struct ShellCompletionService {
     }
 
     func configurationURL(for shell: SupportedShell) -> URL {
-        homeDirectory.appendingPathComponent(shell.configurationFilename)
+        switch shell {
+        case .zsh:
+            return homeDirectory.appendingPathComponent(".zshrc")
+        case .bash:
+            return homeDirectory.appendingPathComponent(".bashrc")
+        }
     }
 
     func completionDirectoryURL() -> URL {
         if let override = environment["ASDF_DATA_DIR"], override.hasPrefix("/") {
-            return URL(fileURLWithPath: override, isDirectory: true).appendingPathComponent("completions", isDirectory: true)
+            return URL(fileURLWithPath: override, isDirectory: true)
+                .appendingPathComponent("completions", isDirectory: true)
         }
         return homeDirectory.appendingPathComponent(".asdf/completions", isDirectory: true)
     }
