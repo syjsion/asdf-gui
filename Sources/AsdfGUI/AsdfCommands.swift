@@ -19,12 +19,16 @@ struct AsdfCommands: Commands {
         }
 
         CommandMenu(language.localized("Navigate")) {
-            ForEach(AppSection.allCases) { section in
-                Button(language.localized(section.titleKey)) {
-                    navigation.show(section)
-                }
-                .keyboardShortcut(KeyEquivalent(Character(section.shortcutNumber)), modifiers: [.command])
-            }
+            Button(language.localized("Overview")) { navigation.show(.overview) }
+                .keyboardShortcut("1", modifiers: [.command])
+            Button(language.localized("Projects")) { navigation.show(.projects) }
+                .keyboardShortcut("2", modifiers: [.command])
+            Button(language.localized("Versions")) { navigation.show(.versions) }
+                .keyboardShortcut("3", modifiers: [.command])
+            Button(language.localized("Resolution")) { navigation.show(.resolution) }
+                .keyboardShortcut("4", modifiers: [.command])
+            Button(language.localized("Plugins")) { navigation.show(.plugins) }
+                .keyboardShortcut("5", modifiers: [.command])
         }
 
         CommandGroup(after: .appSettings) {
