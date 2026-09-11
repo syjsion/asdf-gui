@@ -43,14 +43,14 @@ struct VersionsPolishedView: View {
                     isShowingUpdateCenter = true
                 }
                 .disabled(model.plugins.isEmpty || model.hasActiveOperation)
-                .accessibilityHint(language.localized("Compare installed runtimes with the latest stable versions."))
+                .accessibilityHint(Text(language.localized("Compare installed runtimes with the latest stable versions.")))
 
                 Button("Refresh", systemImage: "arrow.clockwise") {
                     guard let selectedTool else { return }
                     Task { await model.loadVersionBrowser(tool: selectedTool) }
                 }
                 .disabled(selectedTool == nil || model.isLoadingVersionBrowser || model.hasActiveOperation)
-                .accessibilityHint(language.localized("Reload installed, latest, and available versions for the selected plugin."))
+                .accessibilityHint(Text(language.localized("Reload installed, latest, and available versions for the selected plugin.")))
             }
 
             if let task = model.activeVersionOperation {
@@ -86,7 +86,7 @@ struct VersionsPolishedView: View {
                         }
                         .tag(plugin.name)
                         .accessibilityElement(children: .combine)
-                        .accessibilityLabel(pluginAccessibilityLabel(plugin.name))
+                        .accessibilityLabel(Text(pluginAccessibilityLabel(plugin.name)))
                     }
                     .frame(minWidth: 180, idealWidth: 220, maxWidth: 270)
                     .disabled(model.hasActiveOperation)
@@ -110,7 +110,7 @@ struct VersionsPolishedView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
-                .accessibilityLabel(language.localized("Version list scope"))
+                .accessibilityLabel(Text(language.localized("Version list scope")))
             }
         }
         .sheet(isPresented: $isShowingUpdateCenter) {
@@ -243,7 +243,7 @@ private struct VersionDetailView: View {
                             }
                             .font(.callout)
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel(statusAccessibilityLabel(record))
+                            .accessibilityLabel(Text(statusAccessibilityLabel(record)))
                         }
                         TableColumn("Action") { record in
                             if record.isInstalled {
@@ -255,7 +255,7 @@ private struct VersionDetailView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .disabled(model.hasActiveOperation)
-                                .accessibilityLabel(uninstallAccessibilityLabel(tool: tool, version: record.version))
+                                .accessibilityLabel(Text(uninstallAccessibilityLabel(tool: tool, version: record.version)))
                             } else {
                                 Button {
                                     model.installVersionFromBrowser(tool: tool, version: record.version)
@@ -264,7 +264,7 @@ private struct VersionDetailView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .disabled(model.hasActiveOperation || model.executableURL == nil)
-                                .accessibilityLabel(installAccessibilityLabel(tool: tool, version: record.version))
+                                .accessibilityLabel(Text(installAccessibilityLabel(tool: tool, version: record.version)))
                             }
                         }
                     }
