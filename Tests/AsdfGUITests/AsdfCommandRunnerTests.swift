@@ -41,6 +41,43 @@ final class AsdfCommandRunnerTests: XCTestCase {
         XCTAssertTrue(collector.snapshot().contains("hello-stream"))
     }
 
+    func testRunPrependsExecutableDirectoryForNestedAsdfCallbacks() async throws {
+        let fileManager = FileManager.default
+        let directory = fileManager.temporaryDirectory
+            .appendingPathComponent("asdf-runner-path-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: directory) }
+
+        let executable = directory.appendingPathComponent("asdf")
+        let script = """
+        #!/bin/sh
+        if [ "$1" = "nested" ]; then
+          printf 'nested-ok\\n'
+          exit 0
+        fi
+        asdf nested
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try fileManager.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+
+        let runner = AsdfCommandRunner()
+        let result = try await runner.run(executable: executable, arguments: ["install"])
+
+        XCTAssertEqual(result.exitCode, 0)
+        XCTAssertEqual(result.stdout, "nested-ok\n")
+    }
+
+    func testChildEnvironmentPinsSelectedExecutableDirectoryAheadOfExistingPath() {
+        let executable = URL(fileURLWithPath: "/custom/asdf/bin/asdf")
+        let environment = AsdfCommandRunner.childEnvironment(
+            for: executable,
+            inherited: ["PATH": "/usr/local/bin:/custom/asdf/bin:/usr/bin", "HOME": "/tmp/home"]
+        )
+
+        XCTAssertEqual(environment["PATH"], "/custom/asdf/bin:/usr/local/bin:/usr/bin")
+        XCTAssertEqual(environment["HOME"], "/tmp/home")
+    }
+
     func testRunCancellationTerminatesProcess() async throws {
         let runner = AsdfCommandRunner()
         let task = Task {
