@@ -139,6 +139,7 @@ struct AsdfCommandRunner {
             process.executableURL = executable
             process.arguments = arguments
             process.currentDirectoryURL = currentDirectory
+            process.environment = Self.childEnvironment(for: executable)
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
             process.terminationHandler = { process in
@@ -187,6 +188,23 @@ struct AsdfCommandRunner {
 
         try Task.checkCancellation()
         return result
+    }
+
+    static func childEnvironment(
+        for executable: URL,
+        inherited: [String: String] = ProcessInfo.processInfo.environment
+    ) -> [String: String] {
+        var environment = inherited
+        let executableDirectory = executable.standardizedFileURL.deletingLastPathComponent().path
+        let fallbackPath = "/usr/bin:/bin:/usr/sbin:/sbin"
+        let existingPath = environment["PATH"]?.isEmpty == false ? environment["PATH"]! : fallbackPath
+        let pathEntries = existingPath
+            .split(separator: ":", omittingEmptySubsequences: true)
+            .map(String.init)
+            .filter { $0 != executableDirectory }
+
+        environment["PATH"] = ([executableDirectory] + pathEntries).joined(separator: ":")
+        return environment
     }
 
     private func drain(
