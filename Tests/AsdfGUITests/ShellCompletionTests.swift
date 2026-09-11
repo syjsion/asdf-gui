@@ -90,7 +90,12 @@ final class ShellCompletionTests: XCTestCase {
         try "user edit\n".write(to: plan.configurationURL, atomically: true, encoding: .utf8)
 
         XCTAssertThrowsError(try service.apply(plan)) { error in
-            XCTAssertEqual(error as? ShellCompletionError, .configurationChanged)
+            guard let completionError = error as? ShellCompletionError else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            guard case .configurationChanged = completionError else {
+                return XCTFail("Expected configurationChanged, got \(completionError)")
+            }
         }
     }
 
@@ -109,7 +114,12 @@ final class ShellCompletionTests: XCTestCase {
         try "external edit\n".write(to: completionURL, atomically: true, encoding: .utf8)
 
         XCTAssertThrowsError(try service.apply(updatePlan)) { error in
-            XCTAssertEqual(error as? ShellCompletionError, .completionFileChanged)
+            guard let completionError = error as? ShellCompletionError else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+            guard case .completionFileChanged = completionError else {
+                return XCTFail("Expected completionFileChanged, got \(completionError)")
+            }
         }
     }
 
