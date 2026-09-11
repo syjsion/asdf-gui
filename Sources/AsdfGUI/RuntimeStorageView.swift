@@ -135,7 +135,7 @@ struct RuntimeStorageView: View {
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                     }
-                    .width(min: 120, ideal: 150)
+                    .width(min: 120, ideal: 150, max: 200)
 
                     TableColumn(language.localized("Disk Usage")) { entry in
                         if let bytes = entry.allocatedBytes {
@@ -147,15 +147,20 @@ struct RuntimeStorageView: View {
                                 .help(entry.errorMessage ?? "")
                         }
                     }
-                    .width(min: 100, ideal: 120)
+                    .width(min: 100, ideal: 120, max: 150)
 
                     TableColumn(language.localized("Projects")) { entry in
                         let count = appModel.projectsUsing(tool: tool, version: entry.version).count
-                        Text(count == 0 ? "—" : "\(count)")
-                            .foregroundStyle(count == 0 ? .secondary : .primary)
-                            .accessibilityLabel(Text(projectReferenceAccessibility(count)))
+                        Group {
+                            if count == 0 {
+                                Text("—").foregroundStyle(.secondary)
+                            } else {
+                                Text("\(count)")
+                            }
+                        }
+                        .accessibilityLabel(Text(projectReferenceAccessibility(count)))
                     }
-                    .width(min: 70, ideal: 85)
+                    .width(min: 70, ideal: 85, max: 100)
 
                     TableColumn(language.localized("Install Path")) { entry in
                         if let path = entry.path {
@@ -197,7 +202,7 @@ struct RuntimeStorageView: View {
                             .accessibilityLabel(Text(uninstallAccessibilityLabel(entry)))
                         }
                     }
-                    .width(min: 130, ideal: 150)
+                    .width(min: 130, ideal: 150, max: 180)
                 }
             }
 
