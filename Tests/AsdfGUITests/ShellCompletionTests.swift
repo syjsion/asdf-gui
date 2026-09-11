@@ -25,7 +25,7 @@ final class ShellCompletionTests: XCTestCase {
 
         let plan = try service.plan(shell: .bash, executableURL: executable, completionScript: nil)
 
-        XCTAssertEqual(plan.configurationURL, home.appendingPathComponent(".bash_profile"))
+        XCTAssertEqual(plan.configurationURL, home.appendingPathComponent(".bashrc"))
         XCTAssertNil(plan.completionFileURL)
         XCTAssertTrue(plan.managedBlock.contains(". <('\(executable.path)' completion bash)"))
         XCTAssertEqual(plan.status, .notConfigured)
