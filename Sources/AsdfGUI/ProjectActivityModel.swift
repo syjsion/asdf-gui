@@ -15,6 +15,11 @@ final class ProjectActivityModel {
         self.lastUsedDates = preferences.projectLastUsedDates()
     }
 
+    func reload() {
+        favoritePaths = preferences.favoriteProjectPaths()
+        lastUsedDates = preferences.projectLastUsedDates()
+    }
+
     func isFavorite(_ project: ManagedProject) -> Bool {
         favoritePaths.contains(project.path)
     }

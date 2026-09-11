@@ -12,6 +12,15 @@ The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings a
 
 ## Highlights
 
+### Overview and daily use
+
+- **Quick Access** surfaces up to four favorite projects plus recently used non-favorites directly on the Overview page.
+- Quick Access can deep-link into Projects or open the structured `.tool-versions` manager without making users search for the project again.
+- Project activity is reread from persisted preferences when Overview becomes active, so Favorites/Recent changes made in Projects remain consistent without caching project configuration.
+- **Storage Overview** performs an explicit, on-demand inventory across every installed plugin, measuring installed runtime directories and showing total disk usage, per-version paths and managed-project references.
+- The “No managed references” filter is intentionally only a hint: Home configuration, unmanaged projects or other workflows may still depend on a version.
+- Storage Overview results are transient and never scanned during normal startup.
+
 ### Projects
 
 - Add/remove managed folders and search/sort by name, path, configured tool, or recent use.
@@ -119,7 +128,8 @@ asdf does not expose a CLI command for changing `.asdfrc`, so this is a document
 - Commands use `Process.executableURL` + argument arrays, not `/bin/zsh -c` interpolation.
 - Only one mutation/bootstrap/configuration operation runs application-wide at a time.
 - Potentially destructive runtime/plugin removal shows known impact first.
-- Runtime Storage is read-only except when the user explicitly chooses cleanup, which routes through the existing typed `asdf uninstall` operation; the app never recursively deletes an asdf runtime directory.
+- Runtime Storage and Storage Overview are read-only except when the user explicitly chooses cleanup, which routes through the existing typed `asdf uninstall` operation; the app never recursively deletes an asdf runtime directory.
+- “No managed project references” is never treated as proof that a runtime is unused outside the GUI's managed project set.
 - `.tool-versions` remains deterministic: Update Center never writes `latest` into project files.
 - Structured `.asdfrc` writes are race-checked and limited to the six documented standard keys; unknown lines and plugin hooks are preserved.
 - Shell completion writes are previewed, marker-scoped, race-checked, and participate in the same global mutation gate.
