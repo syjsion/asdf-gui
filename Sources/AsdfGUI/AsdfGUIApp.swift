@@ -5,6 +5,7 @@ import SwiftUI
 struct AsdfGUIApp: App {
     @State private var model = AppModel()
     @State private var bootstrapModel = AsdfBootstrapModel()
+    @State private var navigation = AppNavigationModel()
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
 
     private var language: AppLanguage {
@@ -16,17 +17,19 @@ struct AsdfGUIApp: App {
             LocalizedAppRootView()
                 .environment(model)
                 .environment(bootstrapModel)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
                 .frame(minWidth: 900, minHeight: 580)
         }
         .commands {
-            AsdfCommands()
+            AsdfCommands(navigation: navigation)
         }
 
         Window("Getting Started", id: "getting-started") {
             GettingStartedView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -35,6 +38,7 @@ struct AsdfGUIApp: App {
         Window("Set Runtime Version", id: "version-selection") {
             VersionSelectionView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -43,6 +47,7 @@ struct AsdfGUIApp: App {
         Window("Plugin Manager", id: "plugin-manager") {
             PluginManagerView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -51,6 +56,7 @@ struct AsdfGUIApp: App {
         Window("Diagnostics", id: "diagnostics") {
             DiagnosticsView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -59,6 +65,7 @@ struct AsdfGUIApp: App {
         Window("Shell Integration", id: "shell-integration") {
             ShellIntegrationView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -67,6 +74,7 @@ struct AsdfGUIApp: App {
         Window(language.localized("asdf Configuration"), id: "asdf-configuration") {
             AsdfConfigurationView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -75,6 +83,7 @@ struct AsdfGUIApp: App {
         Window("About asdf GUI", id: "about") {
             AboutView()
                 .environment(model)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
@@ -85,6 +94,7 @@ struct AsdfGUIApp: App {
             AppSettingsView()
                 .environment(model)
                 .environment(bootstrapModel)
+                .environment(navigation)
                 .environment(\.locale, language.locale)
                 .id(languageRaw)
         }
