@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -20,6 +21,7 @@ private enum ProjectSortOrder: String, CaseIterable, Identifiable {
 @MainActor
 struct ProjectsPolishedView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppNavigationModel.self) private var appNavigation
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var isAddingProject = false
     @State private var importerError: String?
@@ -80,10 +82,13 @@ struct ProjectsPolishedView: View {
                         Image(systemName: "arrow.up.arrow.down")
                     }
                 }
+                .accessibilityHint(Text(language.localized("Choose how managed projects are ordered.")))
+
                 Button("Add Project", systemImage: "plus") {
                     isAddingProject = true
                 }
                 .disabled(model.hasActiveOperation)
+                .accessibilityHint(Text(language.localized("Choose one or more project folders to manage.")))
             }
 
             if let importerError {
@@ -124,6 +129,7 @@ struct ProjectsPolishedView: View {
                 Task { await model.reloadProjects() }
             }
             .disabled(model.hasActiveOperation)
+            .accessibilityHint(Text(language.localized("Reload project files and installed runtime status.")))
         }
         .fileImporter(
             isPresented: $isAddingProject,
@@ -138,6 +144,15 @@ struct ProjectsPolishedView: View {
                 importerError = error.localizedDescription
             }
         }
+        .task { applyNavigationSearchIfNeeded() }
+        .onChange(of: appNavigation.projectSearchRequest) { _, _ in
+            applyNavigationSearchIfNeeded()
+        }
+    }
+
+    private func applyNavigationSearchIfNeeded() {
+        guard let query = appNavigation.consumeProjectSearchRequest() else { return }
+        searchText = query
     }
 }
 
@@ -162,6 +177,7 @@ private struct ProjectCard: View {
                         .font(.title3)
                         .foregroundStyle(.secondary)
                         .padding(.top, 2)
+                        .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(snapshot.project.name)
@@ -176,10 +192,17 @@ private struct ProjectCard: View {
                     Spacer(minLength: 16)
 
                     HStack(spacing: 10) {
+                        Button(language.localized("Reveal in Finder"), systemImage: "finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([snapshot.project.url])
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityHint(Text(language.localized("Reveal this managed project folder in Finder.")))
+
                         Button("Manage .tool-versions", systemImage: "slider.horizontal.3") {
                             isManagingToolVersions = true
                         }
                         .disabled(model.hasActiveOperation)
+                        .accessibilityHint(Text(language.localized("Open the structured .tool-versions editor for this project.")))
 
                         Button(role: .destructive) {
                             model.removeProject(snapshot.project)
@@ -197,6 +220,8 @@ private struct ProjectCard: View {
             }
             .padding(4)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(snapshot.project.name))
         .sheet(isPresented: $isManagingToolVersions) {
             ProjectToolVersionsManagerView(project: snapshot.project)
         }
@@ -268,8 +293,10 @@ private struct ProjectRequirementLine: View {
             } icon: {
                 Image(systemName: model.isRequirementSatisfied(requirement) ? "checkmark.circle.fill" : "exclamationmark.circle")
                     .foregroundStyle(requirementStyle)
+                    .accessibilityHidden(true)
             }
             .frame(minWidth: 120, idealWidth: 150, maxWidth: 180, alignment: .leading)
+            .accessibilityLabel(Text(requirementAccessibilityLabel))
 
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(requirement.versions.enumerated()), id: \.offset) { index, version in
@@ -278,6 +305,7 @@ private struct ProjectRequirementLine: View {
                         Image(systemName: statusSymbol(status))
                             .frame(width: 16)
                             .foregroundStyle(statusStyle(status))
+                            .accessibilityHidden(true)
                         Text(version)
                             .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
@@ -290,6 +318,8 @@ private struct ProjectRequirementLine: View {
                                 .foregroundStyle(.tertiary)
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text(versionAccessibilityLabel(version: version, status: status, isFallback: index > 0)))
                 }
 
                 if let error = model.versionLookupErrors[requirement.tool] {
@@ -301,6 +331,22 @@ private struct ProjectRequirementLine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var requirementAccessibilityLabel: String {
+        let state = model.isRequirementSatisfied(requirement)
+            ? language.localized("Satisfied")
+            : language.localized("Needs attention")
+        return "\(requirement.tool), \(state)"
+    }
+
+    private func versionAccessibilityLabel(
+        version: String,
+        status: RequirementVersionStatus,
+        isFallback: Bool
+    ) -> String {
+        let fallback = isFallback ? ", \(language.localized("fallback"))" : ""
+        return "\(requirement.tool) \(version), \(language.localized(statusTitle(status)))\(fallback)"
     }
 
     private var requirementStyle: AnyShapeStyle {

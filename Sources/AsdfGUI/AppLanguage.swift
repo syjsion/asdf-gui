@@ -217,6 +217,25 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         "Installing plugin…": "正在安装插件…",
         "Plugin installed": "插件已安装",
         "Plugin installation failed": "插件安装失败",
-        "Plugin installation cancelled": "插件安装已取消"
+        "Plugin installation cancelled": "插件安装已取消",
+
+        "Navigate": "导航",
+        "Show in Projects": "在项目中显示",
+        "View Versions": "查看版本",
+        "Info": "信息",
+        "Warning": "警告",
+        "Error": "错误",
+        "Reveal in Finder": "在 Finder 中显示",
+        "Satisfied": "已满足",
+        "Needs attention": "需要处理",
+        "Choose how managed projects are ordered.": "选择已管理项目的排序方式。",
+        "Choose one or more project folders to manage.": "选择一个或多个需要管理的项目文件夹。",
+        "Reload project files and installed runtime status.": "重新读取项目文件并刷新已安装运行时状态。",
+        "Reveal this managed project folder in Finder.": "在 Finder 中显示这个已管理项目文件夹。",
+        "Open the structured .tool-versions editor for this project.": "打开该项目的结构化 .tool-versions 管理器。",
+        "Open Projects and filter to this project.": "打开项目页面并筛选到当前项目。",
+        "Compare installed runtimes with the latest stable versions.": "比较已安装运行时与最新稳定版本。",
+        "Reload installed, latest, and available versions for the selected plugin.": "重新加载所选插件的已安装、最新和可用版本。",
+        "Version list scope": "版本列表范围"
     ]
 }

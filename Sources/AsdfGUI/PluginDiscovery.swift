@@ -1,6 +1,17 @@
 import Foundation
 import Observation
 
+enum PluginCatalogResolver {
+    static func exactEntry(
+        for tool: String,
+        in catalog: [AsdfPluginCatalogEntry]
+    ) -> AsdfPluginCatalogEntry? {
+        catalog.first { entry in
+            entry.name.compare(tool, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class PluginDiscoveryModel {

@@ -37,7 +37,13 @@ SwiftUI
       -> feature windows: Getting Started, Set Runtime Version,
          Diagnostics, Shell Integration, asdf Configuration, About, Settings
 
-Shared state
+Shared UI state
+  -> AppNavigationModel (@MainActor)
+      -> current AppSection
+      -> one-shot project search deep link
+      -> one-shot Versions tool deep link
+
+Shared asdf state
   -> AppModel (@MainActor)
       -> AsdfService
           -> AsdfCommandRunner
@@ -133,6 +139,37 @@ Supported languages are English (`en`) and Simplified Chinese (`zh-Hans`). The p
 
 Raw asdf output is never translated or persisted.
 
+## Navigation and accessibility
+
+`AppNavigationModel` is the single shared source of truth for the main sidebar section and cross-feature deep links. Do not introduce independent sidebar-selection state in feature views.
+
+Main navigation shortcuts are stable:
+
+```text
+Command-1  Overview
+Command-2  Projects
+Command-3  Versions
+Command-4  Resolution
+Command-5  Plugins
+```
+
+Deep-link rules:
+
+- `showProject(_:)` selects Projects and creates a one-shot search request using the managed project path;
+- `showVersions(tool:)` selects Versions and creates a one-shot tool-selection request;
+- destination views consume each request once and clear it;
+- deep-link state is transient and must not be persisted;
+- Health may open Plugin Manager as a separate native window when plugin-specific management is more appropriate than sidebar navigation.
+
+Accessibility rules:
+
+- do not communicate health/runtime state by color alone; pair color/icon treatment with visible status text;
+- important icon-only or ambiguous controls need an accessibility label or hint;
+- version rows should expose version + installed/latest/available status to VoiceOver;
+- project runtime rows should expose tool + version + status/fallback semantics to VoiceOver;
+- decorative status/folder icons should be hidden from accessibility when adjacent text already carries the meaning;
+- keyboard navigation and accessibility copy must continue to work in English and Simplified Chinese.
+
 ## Projects and `.tool-versions`
 
 Persist only project paths and reread project configuration from disk. Preserve ordered fallbacks. A requirement is satisfied if any fallback is usable; `system` and `path:*` are satisfied special values. Missing plugins and lookup failures remain distinct states.
@@ -144,6 +181,8 @@ asdf set <tool> <version> [<version>...]
 ```
 
 Run from the selected project directory. This covers first-file creation, add, edit and fallback reorder/removal. Version tokens must be validated and passed in the exact user-selected order.
+
+Project cards may expose read-only macOS conveniences such as Reveal in Finder; these must not participate in the asdf mutation gate.
 
 ### Delete-one-tool exception
 
@@ -160,6 +199,8 @@ Read commands:
 `VersionCatalog.records` remains installed-first: installed versions in asdf order, remaining available versions, then latest if absent, with no duplicates.
 
 Runtime Install/Uninstall use exact versions. Uninstall shows managed-project usage impact first and never rewrites `.tool-versions`.
+
+Versions must honor `AppNavigationModel.showVersions(tool:)` deep links and select the requested installed plugin before loading its catalog.
 
 ### Runtime Update Center
 
@@ -225,12 +266,14 @@ Repair policy:
 
 - there is no automatic **Fix All**;
 - only deterministic issues receive an action;
-- `Plugin missing` may offer `asdf plugin add <tool>` after explicit confirmation;
+- `Plugin missing` repair should load `asdf plugin list all` only after the user requests repair, resolve the tool by exact plugin name, and prefer the catalog entry's explicit Git URL when available;
+- if no usable exact catalog URL is available, the confirmation must explicitly state that repair falls back to `asdf plugin add <tool>` using the short-name repository;
+- catalog matching must never use prefix/substring guesses (`node` must not silently match `nodejs`);
 - `Runtime missing` may offer `asdf install <tool> <version>` for the first configured fallback whose status is exactly `.missing`;
 - runtime repair installs only the exact version and never rewrites Project/Parent/Home `.tool-versions`;
 - plugin/runtime repair reuses the existing operation models, global mutation gate, cancellation and logs;
 - `.unknown`, read failures, resolution failures and ambiguous states must never guess a repair;
-- if a plugin short-name install fails (for example because the short-name repository is disabled), surface the normal operation error and let the user use Plugin Manager / explicit Git URL discovery.
+- Health should offer context navigation where useful: show the project in Projects, open Plugin Manager, or deep-link to Versions for a missing runtime.
 
 ## Plugins
 
@@ -242,7 +285,7 @@ Supported management commands:
 - `asdf plugin remove <name>`
 - `asdf plugin list all` for read-only discovery
 
-Plugin discovery is lazy and searchable. Catalog install reuses the normal PluginManagementModel/global gate. Before plugin removal, list installed runtime versions and managed projects that reference the plugin. If impact lookup fails, do not offer blind removal.
+Plugin discovery is lazy and searchable. Catalog install reuses the normal PluginManagementModel/global gate. `PluginCatalogResolver` performs exact-name matching only. Before plugin removal, list installed runtime versions and managed projects that reference the plugin. If impact lookup fails, do not offer blind removal.
 
 ## Diagnostics
 
@@ -265,6 +308,8 @@ Persisted small preferences:
 
 `.asdfrc` is not copied into app preferences: the file itself is the source of truth and is reread whenever the structured editor opens/reloads.
 
+Navigation/deep-link requests are transient and must never be persisted.
+
 Everything else is recomputed from asdf/files/GitHub when needed.
 
 ## Distribution
@@ -280,13 +325,13 @@ Partial credentials fail closed. Both arm64 and x86_64 artifacts must succeed. S
 
 ## Roadmap status
 
-Completed foundation now includes native SwiftUI architecture, project `.tool-versions` management, runtime version management, plugin management/discovery, diagnostics, packaging/releases, missing-asdf bootstrap, Shell Integration, bilingual UI, About/update check, project search/sort, Resolution/shim exploration, Environment Inspector, Parent (`set -p`) inheritance editing, Runtime Update Center, Project Health, deterministic Project Health repairs, and structured `.asdfrc` management.
+Completed foundation now includes native SwiftUI architecture, project `.tool-versions` management, runtime version management, plugin management/discovery, diagnostics, packaging/releases, missing-asdf bootstrap, Shell Integration, bilingual UI, About/update check, project search/sort, Resolution/shim exploration, Environment Inspector, Parent (`set -p`) inheritance editing, Runtime Update Center, Project Health, deterministic Project Health repairs, structured `.asdfrc` management, shared cross-feature navigation, keyboard section shortcuts, exact-catalog Health plugin repair, Finder project reveal, and initial VoiceOver/status accessibility polish.
 
 Still valuable future work:
 
 - deliberate shell completion support / additional shells;
-- richer accessibility/keyboard navigation and macOS visual polish;
-- optional explicit Git-URL resolution for Health plugin repairs;
+- broader keyboard navigation inside dense tables/editors;
+- deeper VoiceOver/accessibility audit on every feature window;
 - real-Mac smoke testing;
 - Developer ID/notarized release when credentials exist.
 
@@ -304,20 +349,23 @@ When using Codex:
 8. Update Center installs exact latest versions only; no automatic config rewrite or old-version deletion.
 9. Environment Inspector only wraps shimmed-command `asdf env`; never expose arbitrary execution from it.
 10. Project Health scans on demand and treats any usable fallback as satisfied.
-11. Project Health repair actions are per-issue, confirmed, deterministic and never a blind Fix All.
-12. Preserve English/Simplified Chinese behavior for new visible UI.
-13. Do not weaken bootstrap checksum verification, shell-integration race protection, structured config race protection, destructive confirmations or release-mode safety.
-14. Add/update tests for parsers and non-UI decisions.
-15. Update this document when commands, persistence, safety, architecture or distribution behavior changes.
-16. Run `swift test` and package verification before considering a change complete.
+11. Project Health repair actions are per-issue, confirmed, deterministic and never a blind Fix All; prefer exact catalog Git URLs for plugin repairs.
+12. Preserve `AppNavigationModel` as the single source of main-section/deep-link navigation state.
+13. New status UI must not rely on color alone; preserve keyboard/VoiceOver semantics.
+14. Preserve English/Simplified Chinese behavior for new visible UI and accessibility copy.
+15. Do not weaken bootstrap checksum verification, shell-integration race protection, structured config race protection, destructive confirmations or release-mode safety.
+16. Add/update tests for parsers and non-UI decisions.
+17. Update this document when commands, persistence, safety, architecture or distribution behavior changes.
+18. Run `swift test` and package verification before considering a change complete.
 
 Suggested prompt:
 
 ```text
 Read docs/DEVELOPMENT.md first and follow every architecture/safety contract.
 Keep asdf as source of truth, use typed AsdfService commands, preserve the single
-mutation gate, bilingual UI, installed-first catalogs and guarded structured file
-writes. Health repairs must be deterministic per-issue actions, never a Fix All.
-Add tests, run swift test and package verification, and update this document when
-behavior changes.
+mutation gate, bilingual UI, installed-first catalogs, AppNavigationModel deep links,
+and guarded structured file writes. Health repairs must be deterministic per-issue
+actions, prefer exact catalog Git URLs, and never become a Fix All. Preserve visible
+status text plus keyboard/VoiceOver semantics. Add tests, run swift test and package
+verification, and update this document when behavior changes.
 ```
