@@ -12,7 +12,12 @@ final class AppUpdateTests: XCTestCase {
         let releases = [
             release(tag: "v0.1.0", prerelease: true, assets: []),
             release(tag: "v0.2.0", prerelease: true, assets: [
-                asset(name: "asdf-gui-0.2.0-macos-arm64-adhoc.dmg", url: "https://example.com/arm64.dmg")
+                asset(
+                    name: "asdf-gui-0.2.0-macos-arm64-adhoc.dmg",
+                    url: "https://github.com/syjsion/asdf-gui/releases/download/v0.2.0/asdf-gui-0.2.0-macos-arm64-adhoc.dmg",
+                    digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    size: 1234
+                )
             ])
         ]
 
@@ -27,13 +32,21 @@ final class AppUpdateTests: XCTestCase {
         }
         XCTAssertEqual(update.version, "v0.2.0")
         XCTAssertTrue(update.prerelease)
-        XCTAssertEqual(update.downloadURL?.absoluteString, "https://example.com/arm64.dmg")
+        XCTAssertEqual(update.assetName, "asdf-gui-0.2.0-macos-arm64-adhoc.dmg")
+        XCTAssertEqual(update.digest, "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        XCTAssertEqual(update.downloadSize, 1234)
     }
 
     func testResolverSelectsArchitectureSpecificDMG() {
         let releases = [release(tag: "v1.0.0", prerelease: false, assets: [
-            asset(name: "asdf-gui-1.0.0-macos-arm64-developer-id.dmg", url: "https://example.com/arm.dmg"),
-            asset(name: "asdf-gui-1.0.0-macos-x86_64-developer-id.dmg", url: "https://example.com/intel.dmg")
+            asset(
+                name: "asdf-gui-1.0.0-macos-arm64-developer-id.dmg",
+                url: "https://github.com/syjsion/asdf-gui/releases/download/v1.0.0/asdf-gui-1.0.0-macos-arm64-developer-id.dmg"
+            ),
+            asset(
+                name: "asdf-gui-1.0.0-macos-x86_64-developer-id.dmg",
+                url: "https://github.com/syjsion/asdf-gui/releases/download/v1.0.0/asdf-gui-1.0.0-macos-x86_64-developer-id.dmg"
+            )
         ])]
 
         let arm = AppUpdateResolver.resolve(currentVersion: "0.9.0", releases: releases, architecture: .arm64)
@@ -43,8 +56,8 @@ final class AppUpdateTests: XCTestCase {
               case .updateAvailable(let intelUpdate) = intel else {
             return XCTFail("Expected updates for both architectures")
         }
-        XCTAssertEqual(armUpdate.downloadURL?.lastPathComponent, "arm.dmg")
-        XCTAssertEqual(intelUpdate.downloadURL?.lastPathComponent, "intel.dmg")
+        XCTAssertEqual(armUpdate.downloadURL?.lastPathComponent, "asdf-gui-1.0.0-macos-arm64-developer-id.dmg")
+        XCTAssertEqual(intelUpdate.downloadURL?.lastPathComponent, "asdf-gui-1.0.0-macos-x86_64-developer-id.dmg")
     }
 
     func testResolverIgnoresDraftAndReportsUpToDate() {
@@ -78,7 +91,17 @@ final class AppUpdateTests: XCTestCase {
         )
     }
 
-    private func asset(name: String, url: String) -> AppReleaseAsset {
-        AppReleaseAsset(name: name, browserDownloadURL: URL(string: url)!)
+    private func asset(
+        name: String,
+        url: String,
+        digest: String? = nil,
+        size: Int? = nil
+    ) -> AppReleaseAsset {
+        AppReleaseAsset(
+            name: name,
+            browserDownloadURL: URL(string: url)!,
+            digest: digest,
+            size: size
+        )
     }
 }
