@@ -29,6 +29,8 @@ struct AsdfCommands: Commands {
                 .keyboardShortcut("4", modifiers: [.command])
             Button(language.localized("Plugins")) { navigation.show(.plugins) }
                 .keyboardShortcut("5", modifiers: [.command])
+            Button(language.localized("Settings")) { navigation.show(.tools) }
+                .keyboardShortcut("6", modifiers: [.command])
         }
 
         CommandGroup(after: .appSettings) {
