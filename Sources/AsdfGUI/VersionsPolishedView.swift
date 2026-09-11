@@ -15,6 +15,7 @@ private struct PendingRuntimeUninstall {
 @MainActor
 struct VersionsPolishedView: View {
     @Environment(AppModel.self) private var model
+    @Environment(AppNavigationModel.self) private var appNavigation
     @State private var selectedTool: String?
     @State private var searchText = ""
     @State private var scope: VersionListScope = .all
@@ -42,11 +43,14 @@ struct VersionsPolishedView: View {
                     isShowingUpdateCenter = true
                 }
                 .disabled(model.plugins.isEmpty || model.hasActiveOperation)
+                .accessibilityHint(language.localized("Compare installed runtimes with the latest stable versions."))
+
                 Button("Refresh", systemImage: "arrow.clockwise") {
                     guard let selectedTool else { return }
                     Task { await model.loadVersionBrowser(tool: selectedTool) }
                 }
                 .disabled(selectedTool == nil || model.isLoadingVersionBrowser || model.hasActiveOperation)
+                .accessibilityHint(language.localized("Reload installed, latest, and available versions for the selected plugin."))
             }
 
             if let task = model.activeVersionOperation {
@@ -81,6 +85,8 @@ struct VersionsPolishedView: View {
                             }
                         }
                         .tag(plugin.name)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel(pluginAccessibilityLabel(plugin.name))
                     }
                     .frame(minWidth: 180, idealWidth: 220, maxWidth: 270)
                     .disabled(model.hasActiveOperation)
@@ -104,21 +110,27 @@ struct VersionsPolishedView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
+                .accessibilityLabel(language.localized("Version list scope"))
             }
         }
         .sheet(isPresented: $isShowingUpdateCenter) {
             RuntimeUpdateCenterView()
         }
         .onAppear {
+            applyVersionToolRequestIfNeeded()
             if selectedTool == nil {
                 selectedTool = model.plugins.first?.name
             }
         }
         .onChange(of: model.plugins) { _, plugins in
+            applyVersionToolRequestIfNeeded()
             if let selectedTool, plugins.contains(where: { $0.name == selectedTool }) {
                 return
             }
             selectedTool = plugins.first?.name
+        }
+        .onChange(of: appNavigation.versionToolRequest) { _, _ in
+            applyVersionToolRequestIfNeeded()
         }
         .task(id: selectedTool) {
             guard let selectedTool else {
@@ -129,8 +141,20 @@ struct VersionsPolishedView: View {
         }
     }
 
+    private func applyVersionToolRequestIfNeeded() {
+        guard let requested = appNavigation.consumeVersionToolRequest() else { return }
+        if model.plugins.contains(where: { $0.name == requested }) {
+            selectedTool = requested
+        }
+    }
+
     private func installedCountText(_ count: Int) -> String {
         language == .simplifiedChinese ? "已安装 \(count) 个" : "\(count) installed"
+    }
+
+    private func pluginAccessibilityLabel(_ name: String) -> String {
+        let count = model.installedVersionsByTool[name]?.count ?? 0
+        return "\(name), \(installedCountText(count))"
     }
 }
 
@@ -218,6 +242,8 @@ private struct VersionDetailView: View {
                                 }
                             }
                             .font(.callout)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel(statusAccessibilityLabel(record))
                         }
                         TableColumn("Action") { record in
                             if record.isInstalled {
@@ -229,6 +255,7 @@ private struct VersionDetailView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .disabled(model.hasActiveOperation)
+                                .accessibilityLabel(uninstallAccessibilityLabel(tool: tool, version: record.version))
                             } else {
                                 Button {
                                     model.installVersionFromBrowser(tool: tool, version: record.version)
@@ -237,6 +264,7 @@ private struct VersionDetailView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .disabled(model.hasActiveOperation || model.executableURL == nil)
+                                .accessibilityLabel(installAccessibilityLabel(tool: tool, version: record.version))
                             }
                         }
                     }
@@ -269,6 +297,24 @@ private struct VersionDetailView: View {
 
     private func installedCountText(_ count: Int) -> String {
         language == .simplifiedChinese ? "已安装 \(count) 个" : "\(count) installed"
+    }
+
+    private func statusAccessibilityLabel(_ record: ToolVersionRecord) -> String {
+        var parts: [String] = [record.version]
+        if record.isInstalled { parts.append(language.localized("Installed")) }
+        if record.isLatest { parts.append(language.localized("Latest")) }
+        if !record.isInstalled && !record.isLatest { parts.append(language.localized("Available")) }
+        return parts.joined(separator: ", ")
+    }
+
+    private func installAccessibilityLabel(tool: String, version: String) -> String {
+        if language == .simplifiedChinese { return "安装 \(tool) \(version)" }
+        return "Install \(tool) \(version)"
+    }
+
+    private func uninstallAccessibilityLabel(tool: String, version: String) -> String {
+        if language == .simplifiedChinese { return "卸载 \(tool) \(version)" }
+        return "Uninstall \(tool) \(version)"
     }
 
     private func uninstallMessage(for request: PendingRuntimeUninstall) -> String {
