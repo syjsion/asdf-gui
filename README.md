@@ -16,6 +16,7 @@ The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings a
 
 - Add/remove managed folders and search/sort by name, path, or configured tool.
 - Card-based project status with Installed / Missing / System / Local path / Plugin missing / Unknown states.
+- Reveal any managed project directly in Finder.
 - Visual `.tool-versions` management without exposing a raw text editor.
 - Add/edit/reorder fallback chains through `asdf set <tool> <version...>` in the project directory.
 - Delete-one-tool is the only guarded `.tool-versions` direct-file exception because asdf 0.20 has no delete-entry command; it preserves unrelated lines/comments/permissions and rejects stale or duplicate target entries.
@@ -28,6 +29,7 @@ The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings a
 - Install/uninstall exact runtime versions with live logs and cancellation.
 - Uninstall shows managed-project usage impact before confirmation.
 - **Runtime Update Center** compares every installed plugin with `asdf latest`; installing an update installs that exact latest version without removing older versions or rewriting `.tool-versions`.
+- Health and other workflows can deep-link into Versions and preselect the relevant tool.
 - Set exact versions at three scopes:
   - current Project: `asdf set <tool> <version>`;
   - closest existing parent configuration: `asdf set -p <tool> <version>`;
@@ -44,14 +46,14 @@ The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings a
 
 The Overview page links to a full **Project Health** report. It combines `.tool-versions` requirements with `asdf current` to surface missing plugins, missing runtimes when no fallback is usable, unknown lookup state, unreadable/empty configuration, effective runtimes reported as not installed, and the parent/Home `.tool-versions` files actually supplying inherited versions.
 
-Health now offers explicit, per-issue repair actions only when the remedy is deterministic:
+Health offers explicit, per-issue repair actions only when the remedy is deterministic:
 
-- **Plugin missing** → confirm and run `asdf plugin add <tool>`;
+- **Plugin missing** → on demand, query `asdf plugin list all`, require an exact plugin-name match when available, and prefer the catalog's explicit Git URL before confirmation; only fall back to short-name installation when no usable exact catalog URL is available.
 - **Runtime missing** → confirm and install the first missing configured fallback with `asdf install <tool> <version>`.
 
 There is intentionally no **Fix All**. Health repairs reuse the global mutation gate and live task logs, never silently rewrite `.tool-versions`, and leave uncertain states such as lookup failures as diagnostics instead of guessing.
 
-The full resolution scan is on demand so normal startup stays lightweight.
+Health cards can also navigate directly to the relevant managed Project, open Plugin Manager, or jump to Versions with the affected tool selected. The full resolution scan is on demand so normal startup stays lightweight.
 
 ### asdf machine configuration (`.asdfrc`)
 
@@ -74,6 +76,14 @@ asdf does not expose a CLI command for changing `.asdfrc`, so this is a document
 - Search the official `asdf plugin list all` catalog and install entries without memorizing plugin names.
 - Plugin removal enumerates installed runtimes and managed-project impact first.
 - Diagnostics: `asdf info`, `asdf where`, `asdf which`, `asdf reshim`, plus a copyable diagnostic report.
+
+### Navigation and accessibility
+
+- The main sidebar uses shared navigation state so cross-feature actions can return to the correct management screen with context.
+- `⌘1` Overview, `⌘2` Projects, `⌘3` Versions, `⌘4` Resolution, `⌘5` Plugins.
+- Project and version status rows expose explicit textual state in addition to color/icon styling.
+- Core project/version controls include VoiceOver labels or hints, and Health severity is displayed as text rather than color alone.
+- English / Simplified Chinese switching continues to apply to navigation, cross-feature actions, and accessibility copy.
 
 ### Onboarding and localization
 
@@ -126,4 +136,4 @@ SIGN_IDENTITY=- \
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, the global write gate, localization, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, the global write gate, localization, navigation/deep-link behavior, accessibility expectations, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
