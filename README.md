@@ -74,16 +74,28 @@ asdf does not expose a CLI command for changing `.asdfrc`, so this is a document
 
 - Plugin Manager: Add / Discover / Update / Update All / Remove.
 - Search the official `asdf plugin list all` catalog and install entries without memorizing plugin names.
+- Plugin Discovery opens with search focused, supports single-row selection and a Return/default action for the selected plugin.
 - Plugin removal enumerates installed runtimes and managed-project impact first.
 - Diagnostics: `asdf info`, `asdf where`, `asdf which`, `asdf reshim`, plus a copyable diagnostic report.
+
+### Shell integration and completions
+
+- **Shell Integration** manages only the app-owned PATH/shims marker block for Zsh (`~/.zshrc`) or Bash (`~/.bash_profile`).
+- **Shell Completions…** (`⌘⇧C`) is a separate, explicit workflow; completions are never silently added as a side effect of PATH setup.
+- Bash completion uses the current binary interface: `. <(asdf completion bash)`, pinned to the exact asdf executable selected by the GUI.
+- Zsh completion runs `asdf completion zsh`, writes the generated script to `${ASDF_DATA_DIR:-$HOME/.asdf}/completions/_asdf` (using an inherited absolute `ASDF_DATA_DIR` when available), and manages only its own `fpath` / `compinit` marker block in `~/.zshrc`.
+- Zsh completion content is compared with fresh `asdf completion zsh` output, so an asdf upgrade can surface **Update available**.
+- Before applying, the GUI verifies that both the shell configuration and generated completion file have not changed since preview.
+- Removing completions deletes only the GUI-owned shell block. The generated `_asdf` file is intentionally retained so the app never deletes a completion file another shell framework may also use.
 
 ### Navigation and accessibility
 
 - The main sidebar uses shared navigation state so cross-feature actions can return to the correct management screen with context.
 - `⌘1` Overview, `⌘2` Projects, `⌘3` Versions, `⌘4` Resolution, `⌘5` Plugins.
+- `⌘⇧C` opens Shell Completions; existing feature-window shortcuts remain available from the app menu.
 - Project and version status rows expose explicit textual state in addition to color/icon styling.
-- Core project/version controls include VoiceOver labels or hints, and Health severity is displayed as text rather than color alone.
-- English / Simplified Chinese switching continues to apply to navigation, cross-feature actions, and accessibility copy.
+- Core project/version controls include VoiceOver labels or hints, Health severity is displayed as text rather than color alone, and the completion workflow exposes explicit status/file descriptions.
+- English / Simplified Chinese switching continues to apply to navigation, cross-feature actions, completion management, and accessibility copy.
 
 ### Onboarding and localization
 
@@ -103,6 +115,7 @@ asdf does not expose a CLI command for changing `.asdfrc`, so this is a document
 - Potentially destructive runtime/plugin removal shows known impact first.
 - `.tool-versions` remains deterministic: Update Center never writes `latest` into project files.
 - Structured `.asdfrc` writes are race-checked and limited to the six documented standard keys; unknown lines and plugin hooks are preserved.
+- Shell completion writes are previewed, marker-scoped, race-checked, and participate in the same global mutation gate.
 
 ## Run from source
 
@@ -136,4 +149,4 @@ SIGN_IDENTITY=- \
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, the global write gate, localization, navigation/deep-link behavior, accessibility expectations, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, shell integration/completion ownership, the global write gate, localization, navigation/deep-link behavior, accessibility expectations, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
