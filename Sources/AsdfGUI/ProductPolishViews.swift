@@ -2,58 +2,31 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-private enum ProjectSortOrder: String, CaseIterable, Identifiable {
-    case name
-    case path
-    case toolCount
-
-    var id: String { rawValue }
-
-    var titleKey: String {
-        switch self {
-        case .name: "Name"
-        case .path: "Path"
-        case .toolCount: "Tool count"
-        }
-    }
-}
-
 @MainActor
 struct ProjectsPolishedView: View {
     @Environment(AppModel.self) private var model
     @Environment(AppNavigationModel.self) private var appNavigation
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
+    @State private var activity = ProjectActivityModel()
     @State private var isAddingProject = false
     @State private var importerError: String?
     @State private var searchText = ""
     @State private var sortOrder: ProjectSortOrder = .name
+    @State private var projectScope: ProjectListScope = .all
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
     }
 
     private var displayedSnapshots: [ProjectSnapshot] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let filtered = model.projectSnapshots.filter { snapshot in
-            query.isEmpty
-                || snapshot.project.name.localizedCaseInsensitiveContains(query)
-                || snapshot.project.path.localizedCaseInsensitiveContains(query)
-                || snapshot.requirements.contains { $0.tool.localizedCaseInsensitiveContains(query) }
-        }
-
-        return filtered.sorted { lhs, rhs in
-            switch sortOrder {
-            case .name:
-                return lhs.project.name.localizedCaseInsensitiveCompare(rhs.project.name) == .orderedAscending
-            case .path:
-                return lhs.project.path.localizedCaseInsensitiveCompare(rhs.project.path) == .orderedAscending
-            case .toolCount:
-                if lhs.requirements.count == rhs.requirements.count {
-                    return lhs.project.name.localizedCaseInsensitiveCompare(rhs.project.name) == .orderedAscending
-                }
-                return lhs.requirements.count > rhs.requirements.count
-            }
-        }
+        ProjectListPlanner.displayedSnapshots(
+            model.projectSnapshots,
+            searchText: searchText,
+            scope: projectScope,
+            sortOrder: sortOrder,
+            favoritePaths: activity.favoritePaths,
+            lastUsedDates: activity.lastUsedDates
+        )
     }
 
     var body: some View {
@@ -69,6 +42,16 @@ struct ProjectsPolishedView: View {
                 if model.isRefreshingVersionStatus {
                     ProgressView().controlSize(.small)
                 }
+
+                Picker(language.localized("Project list"), selection: $projectScope) {
+                    ForEach(ProjectListScope.allCases) { scope in
+                        Text(language.localized(scope.titleKey)).tag(scope)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 190)
+                .accessibilityLabel(Text(language.localized("Project list")))
+
                 Menu {
                     Picker(language.localized("Sort projects"), selection: $sortOrder) {
                         ForEach(ProjectSortOrder.allCases) { order in
@@ -109,13 +92,22 @@ struct ProjectsPolishedView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if displayedSnapshots.isEmpty {
-                ContentUnavailableView.search(text: searchText)
+                if projectScope == .favorites && searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    ContentUnavailableView(
+                        language.localized("No favorite projects"),
+                        systemImage: "star",
+                        description: Text(language.localized("Mark frequently used projects as favorites to keep them at the top and filter to them quickly."))
+                    )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ContentUnavailableView.search(text: searchText)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 ScrollView {
                     LazyVStack(spacing: 14) {
                         ForEach(displayedSnapshots) { snapshot in
-                            ProjectCard(snapshot: snapshot)
+                            ProjectCard(snapshot: snapshot, activity: activity)
                         }
                     }
                     .padding(.vertical, 2)
@@ -144,7 +136,13 @@ struct ProjectsPolishedView: View {
                 importerError = error.localizedDescription
             }
         }
-        .task { applyNavigationSearchIfNeeded() }
+        .task {
+            activity.prune(to: model.projects)
+            applyNavigationSearchIfNeeded()
+        }
+        .onChange(of: model.projects) { _, projects in
+            activity.prune(to: projects)
+        }
         .onChange(of: appNavigation.projectSearchRequest) { _, _ in
             applyNavigationSearchIfNeeded()
         }
@@ -152,6 +150,7 @@ struct ProjectsPolishedView: View {
 
     private func applyNavigationSearchIfNeeded() {
         guard let query = appNavigation.consumeProjectSearchRequest() else { return }
+        projectScope = .all
         searchText = query
     }
 }
@@ -162,6 +161,7 @@ private struct ProjectCard: View {
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
     @State private var isManagingToolVersions = false
     let snapshot: ProjectSnapshot
+    let activity: ProjectActivityModel
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
@@ -180,31 +180,63 @@ private struct ProjectCard: View {
                         .accessibilityHidden(true)
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(snapshot.project.name)
-                            .font(.headline)
+                        HStack(spacing: 7) {
+                            Text(snapshot.project.name)
+                                .font(.headline)
+                            if activity.isFavorite(snapshot.project) {
+                                Label(language.localized("Favorite"), systemImage: "star.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .labelStyle(.iconOnly)
+                                    .accessibilityLabel(Text(language.localized("Favorite project")))
+                            }
+                        }
                         Text(snapshot.project.path)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .lineLimit(2)
+                        if let lastUsed = activity.lastUsedDates[snapshot.project.path] {
+                            HStack(spacing: 4) {
+                                Image(systemName: "clock")
+                                    .accessibilityHidden(true)
+                                Text(language.localized("Last used"))
+                                Text(lastUsed, style: .relative)
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityElement(children: .combine)
+                        }
                     }
 
                     Spacer(minLength: 16)
 
                     HStack(spacing: 10) {
+                        Button {
+                            activity.toggleFavorite(snapshot.project)
+                        } label: {
+                            Image(systemName: activity.isFavorite(snapshot.project) ? "star.fill" : "star")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(language.localized(activity.isFavorite(snapshot.project) ? "Remove from Favorites" : "Add to Favorites"))
+                        .accessibilityLabel(Text(language.localized(activity.isFavorite(snapshot.project) ? "Remove from Favorites" : "Add to Favorites")))
+
                         Button(language.localized("Reveal in Finder"), systemImage: "finder") {
+                            activity.markUsed(snapshot.project)
                             NSWorkspace.shared.activateFileViewerSelecting([snapshot.project.url])
                         }
                         .buttonStyle(.borderless)
                         .accessibilityHint(Text(language.localized("Reveal this managed project folder in Finder.")))
 
                         Button("Manage .tool-versions", systemImage: "slider.horizontal.3") {
+                            activity.markUsed(snapshot.project)
                             isManagingToolVersions = true
                         }
                         .disabled(model.hasActiveOperation)
                         .accessibilityHint(Text(language.localized("Open the structured .tool-versions editor for this project.")))
 
                         Button(role: .destructive) {
+                            activity.remove(snapshot.project)
                             model.removeProject(snapshot.project)
                         } label: {
                             Label("Remove", systemImage: "trash")
@@ -221,10 +253,15 @@ private struct ProjectCard: View {
             .padding(4)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(snapshot.project.name))
+        .accessibilityLabel(Text(projectAccessibilityLabel))
         .sheet(isPresented: $isManagingToolVersions) {
             ProjectToolVersionsManagerView(project: snapshot.project)
         }
+    }
+
+    private var projectAccessibilityLabel: String {
+        let favorite = activity.isFavorite(snapshot.project) ? ", \(language.localized("Favorite"))" : ""
+        return "\(snapshot.project.name)\(favorite)"
     }
 
     @ViewBuilder
@@ -257,6 +294,7 @@ private struct ProjectCard: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Button("Install Missing", systemImage: "arrow.down.circle") {
+                            activity.markUsed(snapshot.project)
                             model.installMissing(for: snapshot)
                         }
                         .disabled(model.hasActiveOperation || model.executableURL == nil)
