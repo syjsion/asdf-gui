@@ -4,6 +4,8 @@ struct PreferencesStore {
     private enum Key {
         static let asdfExecutablePath = "asdfExecutablePath"
         static let projectPaths = "projectPaths"
+        static let favoriteProjectPaths = "favoriteProjectPaths"
+        static let projectLastUsedDates = "projectLastUsedDates"
     }
 
     private let defaults: UserDefaults
@@ -34,5 +36,31 @@ struct PreferencesStore {
 
     func setProjects(_ projects: [ManagedProject]) {
         defaults.set(projects.map(\.path), forKey: Key.projectPaths)
+    }
+
+    func favoriteProjectPaths() -> Set<String> {
+        Set(defaults.stringArray(forKey: Key.favoriteProjectPaths) ?? [])
+    }
+
+    func setFavoriteProjectPaths(_ paths: Set<String>) {
+        defaults.set(paths.sorted(), forKey: Key.favoriteProjectPaths)
+    }
+
+    func projectLastUsedDates() -> [String: Date] {
+        guard let raw = defaults.dictionary(forKey: Key.projectLastUsedDates) else { return [:] }
+        var result: [String: Date] = [:]
+        for (path, value) in raw {
+            if let timestamp = value as? Double {
+                result[path] = Date(timeIntervalSince1970: timestamp)
+            } else if let number = value as? NSNumber {
+                result[path] = Date(timeIntervalSince1970: number.doubleValue)
+            }
+        }
+        return result
+    }
+
+    func setProjectLastUsedDates(_ dates: [String: Date]) {
+        let raw = dates.mapValues(\.timeIntervalSince1970)
+        defaults.set(raw, forKey: Key.projectLastUsedDates)
     }
 }
