@@ -1,6 +1,9 @@
 import SwiftUI
 
+@MainActor
 struct AsdfCommands: Commands {
+    let navigation: AppNavigationModel
+
     @Environment(\.openWindow) private var openWindow
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
 
@@ -12,6 +15,15 @@ struct AsdfCommands: Commands {
         CommandGroup(replacing: .appInfo) {
             Button(language.localized("About asdf GUI…")) {
                 openWindow(id: "about")
+            }
+        }
+
+        CommandMenu(language.localized("Navigate")) {
+            ForEach(AppSection.allCases) { section in
+                Button(language.localized(section.titleKey)) {
+                    navigation.show(section)
+                }
+                .keyboardShortcut(KeyEquivalent(Character(section.shortcutNumber)), modifiers: [.command])
             }
         }
 
