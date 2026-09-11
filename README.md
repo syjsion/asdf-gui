@@ -14,7 +14,9 @@ The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings a
 
 ### Projects
 
-- Add/remove managed folders and search/sort by name, path, or configured tool.
+- Add/remove managed folders and search/sort by name, path, configured tool, or recent use.
+- Favorite frequently used projects; favorites are pinned ahead of the normal sort and can be filtered independently.
+- Recent-use timestamps are updated only by explicit project actions such as opening `.tool-versions`, revealing the folder, or running Install Missing.
 - Card-based project status with Installed / Missing / System / Local path / Plugin missing / Unknown states.
 - Reveal any managed project directly in Finder.
 - Visual `.tool-versions` management without exposing a raw text editor.
@@ -28,6 +30,9 @@ The project keeps asdf, `.tool-versions`, and machine-level `.asdfrc` settings a
 - Browse installed/latest/available versions with search and filtering.
 - Install/uninstall exact runtime versions with live logs and cancellation.
 - Uninstall shows managed-project usage impact before confirmation.
+- **Runtime Storage** measures installed runtime directories on demand using paths reported by `asdf where <tool> <version>`, shows per-version disk usage and managed-project references, and can reveal an install path in Finder.
+- Runtime Storage never deletes directories directly. Cleanup reuses the existing guarded `asdf uninstall <tool> <version>` workflow and global mutation gate.
+- Runtime storage scanning runs off the main thread, does not follow nested symlinks, and is never performed during normal startup.
 - **Runtime Update Center** compares every installed plugin with `asdf latest`; installing an update installs that exact latest version without removing older versions or rewriting `.tool-versions`.
 - Health and other workflows can deep-link into Versions and preselect the relevant tool.
 - Set exact versions at three scopes:
@@ -94,8 +99,9 @@ asdf does not expose a CLI command for changing `.asdfrc`, so this is a document
 - `⌘1` Overview, `⌘2` Projects, `⌘3` Versions, `⌘4` Resolution, `⌘5` Plugins.
 - `⌘⇧C` opens Shell Completions; existing feature-window shortcuts remain available from the app menu.
 - Project and version status rows expose explicit textual state in addition to color/icon styling.
+- Favorites, recent-use state, runtime disk usage and project-reference counts are exposed as text/VoiceOver semantics rather than color-only state.
 - Core project/version controls include VoiceOver labels or hints, Health severity is displayed as text rather than color alone, and the completion workflow exposes explicit status/file descriptions.
-- English / Simplified Chinese switching continues to apply to navigation, cross-feature actions, completion management, and accessibility copy.
+- English / Simplified Chinese switching continues to apply to navigation, cross-feature actions, completion management, project activity, runtime storage, and accessibility copy.
 
 ### Onboarding and localization
 
@@ -113,6 +119,7 @@ asdf does not expose a CLI command for changing `.asdfrc`, so this is a document
 - Commands use `Process.executableURL` + argument arrays, not `/bin/zsh -c` interpolation.
 - Only one mutation/bootstrap/configuration operation runs application-wide at a time.
 - Potentially destructive runtime/plugin removal shows known impact first.
+- Runtime Storage is read-only except when the user explicitly chooses cleanup, which routes through the existing typed `asdf uninstall` operation; the app never recursively deletes an asdf runtime directory.
 - `.tool-versions` remains deterministic: Update Center never writes `latest` into project files.
 - Structured `.asdfrc` writes are race-checked and limited to the six documented standard keys; unknown lines and plugin hooks are preserved.
 - Shell completion writes are previewed, marker-scoped, race-checked, and participate in the same global mutation gate.
@@ -149,4 +156,4 @@ SIGN_IDENTITY=- \
 
 ## Development
 
-Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, shell integration/completion ownership, the global write gate, localization, navigation/deep-link behavior, accessibility expectations, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
+Read [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) before architectural changes or Codex follow-up work. It defines typed command boundaries, `.tool-versions` and `.asdfrc` mutation rules, shell integration/completion ownership, project activity persistence, runtime-storage safety, the global write gate, localization, navigation/deep-link behavior, accessibility expectations, Resolution/Environment/Health behavior, repair-action guarantees, update-center behavior and distribution contracts.
