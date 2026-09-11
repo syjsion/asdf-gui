@@ -16,6 +16,7 @@ private struct PendingRuntimeUninstall {
 struct VersionsPolishedView: View {
     @Environment(AppModel.self) private var model
     @Environment(AppNavigationModel.self) private var appNavigation
+    @Environment(\.openWindow) private var openWindow
     @State private var selectedTool: String?
     @State private var searchText = ""
     @State private var scope: VersionListScope = .all
@@ -31,15 +32,24 @@ struct VersionsPolishedView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Versions")
+                    Text(language.localized("Versions"))
                         .font(.largeTitle.bold())
-                    Text("Browse, install, and uninstall versions for each installed plugin.")
-                        .foregroundStyle(.secondary)
+                    Text(t(
+                        "Browse installed plugins and manage exact runtime versions. Use Add Runtime for the simplest end-to-end installation flow.",
+                        "浏览已安装插件并管理精确运行时版本。需要从零安装时，推荐使用“添加运行时”完成完整流程。"
+                    ))
+                    .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if model.isLoadingVersionBrowser {
                     ProgressView().controlSize(.small)
                 }
+
+                Button(t("Add Runtime", "添加运行时"), systemImage: "plus.circle.fill") {
+                    openWindow(id: "runtime-setup")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(model.hasActiveOperation)
 
                 Button(language.localized("Runtime Storage"), systemImage: "internaldrive") {
                     isShowingStorage = true
@@ -53,9 +63,12 @@ struct VersionsPolishedView: View {
                 .disabled(model.plugins.isEmpty || model.hasActiveOperation)
                 .accessibilityHint(Text(language.localized("Compare installed runtimes with the latest stable versions.")))
 
-                Button("Refresh", systemImage: "arrow.clockwise") {
+                Button(language.localized("Refresh"), systemImage: "arrow.clockwise") {
                     guard let selectedTool else { return }
-                    Task { await model.loadVersionBrowser(tool: selectedTool) }
+                    Task {
+                        await model.loadVersionBrowser(tool: selectedTool)
+                        await model.refreshAllInstalledPluginVersions()
+                    }
                 }
                 .disabled(selectedTool == nil || model.isLoadingVersionBrowser || model.hasActiveOperation)
                 .accessibilityHint(Text(language.localized("Reload installed, latest, and available versions for the selected plugin.")))
@@ -65,7 +78,10 @@ struct VersionsPolishedView: View {
                 VersionOperationPanel(task: task)
             } else if model.activeInstallTask?.isRunning == true {
                 Label(
-                    "A project install task is running. Version actions are temporarily disabled.",
+                    t(
+                        "A project install task is running. Version actions are temporarily disabled.",
+                        "项目安装任务正在运行，版本操作暂时不可用。"
+                    ),
                     systemImage: "hourglass"
                 )
                 .font(.callout)
@@ -73,11 +89,20 @@ struct VersionsPolishedView: View {
             }
 
             if model.plugins.isEmpty && !model.isLoading {
-                ContentUnavailableView(
-                    "No plugins",
-                    systemImage: "shippingbox",
-                    description: Text("Install an asdf plugin before browsing runtime versions.")
-                )
+                VStack(spacing: 14) {
+                    ContentUnavailableView(
+                        t("No runtimes yet", "还没有运行时"),
+                        systemImage: "square.stack.3d.up.slash",
+                        description: Text(t(
+                            "Add Runtime will install the required plugin and let you choose an exact version in one flow.",
+                            "使用“添加运行时”可以一次完成所需插件安装和精确版本选择。"
+                        ))
+                    )
+                    Button(t("Add Runtime", "添加运行时"), systemImage: "plus") {
+                        openWindow(id: "runtime-setup")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HSplitView {
@@ -86,11 +111,9 @@ struct VersionsPolishedView: View {
                             Text(plugin.name)
                                 .fontWeight(.medium)
                             let count = model.installedVersionsByTool[plugin.name]?.count ?? 0
-                            if count > 0 {
-                                Text(installedCountText(count))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                            Text(installedCountText(count))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                         .tag(plugin.name)
                         .accessibilityElement(children: .combine)
@@ -109,12 +132,12 @@ struct VersionsPolishedView: View {
             }
         }
         .padding(28)
-        .searchable(text: $searchText, prompt: "Filter versions")
+        .searchable(text: $searchText, prompt: language.localized("Filter versions"))
         .toolbar {
             ToolbarItem {
-                Picker("Scope", selection: $scope) {
-                    Text("All").tag(VersionListScope.all)
-                    Text("Installed").tag(VersionListScope.installed)
+                Picker(language.localized("Scope"), selection: $scope) {
+                    Text(language.localized("All")).tag(VersionListScope.all)
+                    Text(language.localized("Installed")).tag(VersionListScope.installed)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 200)
@@ -138,12 +161,17 @@ struct VersionsPolishedView: View {
         .onChange(of: model.plugins) { _, plugins in
             applyVersionToolRequestIfNeeded()
             if let selectedTool, plugins.contains(where: { $0.name == selectedTool }) {
+                Task { await model.refreshAllInstalledPluginVersions() }
                 return
             }
             selectedTool = plugins.first?.name
+            Task { await model.refreshAllInstalledPluginVersions() }
         }
         .onChange(of: appNavigation.versionToolRequest) { _, _ in
             applyVersionToolRequestIfNeeded()
+        }
+        .task {
+            await model.refreshAllInstalledPluginVersions()
         }
         .task(id: selectedTool) {
             guard let selectedTool else {
@@ -168,6 +196,10 @@ struct VersionsPolishedView: View {
     private func pluginAccessibilityLabel(_ name: String) -> String {
         let count = model.installedVersionsByTool[name]?.count ?? 0
         return "\(name), \(installedCountText(count))"
+    }
+
+    private func t(_ english: String, _ chinese: String) -> String {
+        language == .simplifiedChinese ? chinese : english
     }
 }
 
@@ -210,11 +242,11 @@ private struct VersionDetailView: View {
                 }
 
                 GroupBox {
-                    LabeledContent("Installed", value: "\(model.versionBrowserInstalledVersions.count)")
+                    LabeledContent(language.localized("Installed"), value: "\(model.versionBrowserInstalledVersions.count)")
                     Divider()
-                    LabeledContent("Latest", value: model.versionBrowserLatestVersion ?? "—")
+                    LabeledContent(language.localized("Latest"), value: model.versionBrowserLatestVersion ?? "—")
                     Divider()
-                    LabeledContent("Available", value: "\(model.versionBrowserAvailableVersions.count)")
+                    LabeledContent(language.localized("Available"), value: "\(model.versionBrowserAvailableVersions.count)")
                 }
 
                 if !model.versionBrowserErrors.isEmpty {
@@ -230,27 +262,29 @@ private struct VersionDetailView: View {
 
                 if records.isEmpty && !model.isLoadingVersionBrowser {
                     ContentUnavailableView(
-                        scope == .installed ? "No installed versions" : "No matching versions",
+                        scope == .installed ? language.localized("No installed versions") : language.localized("No matching versions"),
                         systemImage: "square.stack.3d.up.slash",
-                        description: Text(searchText.isEmpty ? "No versions were returned for this plugin." : "Try a different search term.")
+                        description: Text(searchText.isEmpty
+                                          ? language.localized("No versions were returned for this plugin.")
+                                          : language.localized("Try a different search term."))
                     )
                 } else {
                     Table(records) {
-                        TableColumn("Version") { record in
+                        TableColumn(language.localized("Version")) { record in
                             Text(record.version)
                                 .font(.system(.body, design: .monospaced))
                                 .textSelection(.enabled)
                         }
-                        TableColumn("Status") { record in
+                        TableColumn(language.localized("Status")) { record in
                             HStack(spacing: 8) {
                                 if record.isInstalled {
-                                    Label("Installed", systemImage: "checkmark.circle.fill")
+                                    Label(language.localized("Installed"), systemImage: "checkmark.circle.fill")
                                 }
                                 if record.isLatest {
-                                    Label("Latest", systemImage: "star.fill")
+                                    Label(language.localized("Latest"), systemImage: "star.fill")
                                 }
                                 if !record.isInstalled && !record.isLatest {
-                                    Text("Available")
+                                    Text(language.localized("Available"))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -258,13 +292,13 @@ private struct VersionDetailView: View {
                             .accessibilityElement(children: .combine)
                             .accessibilityLabel(Text(statusAccessibilityLabel(record)))
                         }
-                        TableColumn("Action") { record in
+                        TableColumn(language.localized("Action")) { record in
                             if record.isInstalled {
                                 Button(role: .destructive) {
                                     pendingUninstall = PendingRuntimeUninstall(tool: tool, version: record.version)
                                     isShowingUninstallConfirmation = true
                                 } label: {
-                                    Label("Uninstall", systemImage: "trash")
+                                    Label(language.localized("Uninstall"), systemImage: "trash")
                                 }
                                 .buttonStyle(.borderless)
                                 .disabled(model.hasActiveOperation)
@@ -273,7 +307,7 @@ private struct VersionDetailView: View {
                                 Button {
                                     model.installVersionFromBrowser(tool: tool, version: record.version)
                                 } label: {
-                                    Label("Install", systemImage: "arrow.down.circle")
+                                    Label(language.localized("Install"), systemImage: "arrow.down.circle")
                                 }
                                 .buttonStyle(.borderless)
                                 .disabled(model.hasActiveOperation || model.executableURL == nil)
@@ -284,23 +318,23 @@ private struct VersionDetailView: View {
                 }
             } else {
                 ContentUnavailableView(
-                    "Select a plugin",
+                    language.localized("Select a plugin"),
                     systemImage: "shippingbox",
-                    description: Text("Choose an installed asdf plugin to browse its versions.")
+                    description: Text(language.localized("Choose an installed asdf plugin to browse its versions."))
                 )
             }
         }
         .padding(.leading, 12)
         .alert(
-            "Uninstall version?",
+            language.localized("Uninstall version?"),
             isPresented: $isShowingUninstallConfirmation,
             presenting: pendingUninstall
         ) { request in
-            Button("Uninstall", role: .destructive) {
+            Button(language.localized("Uninstall"), role: .destructive) {
                 model.uninstallVersionFromBrowser(tool: request.tool, version: request.version)
                 pendingUninstall = nil
             }
-            Button("Cancel", role: .cancel) {
+            Button(language.localized("Cancel"), role: .cancel) {
                 pendingUninstall = nil
             }
         } message: { request in
