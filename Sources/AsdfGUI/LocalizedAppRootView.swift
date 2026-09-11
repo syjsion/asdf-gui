@@ -1,43 +1,13 @@
 import SwiftUI
 
-private enum LocalizedSidebarItem: String, CaseIterable, Identifiable {
-    case overview
-    case projects
-    case versions
-    case resolution
-    case plugins
-
-    var id: String { rawValue }
-
-    var titleKey: String {
-        switch self {
-        case .overview: "Overview"
-        case .projects: "Projects"
-        case .versions: "Versions"
-        case .resolution: "Resolution"
-        case .plugins: "Plugins"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .overview: "gauge.with.dots.needle.67percent"
-        case .projects: "folder"
-        case .versions: "square.stack.3d.up"
-        case .resolution: "arrow.triangle.branch"
-        case .plugins: "shippingbox"
-        }
-    }
-}
-
 @MainActor
 struct LocalizedAppRootView: View {
     @Environment(AppModel.self) private var model
     @Environment(AsdfBootstrapModel.self) private var bootstrap
+    @Environment(AppNavigationModel.self) private var appNavigation
     @Environment(\.openWindow) private var openWindow
     @AppStorage("asdfGUI.hasPresentedGettingStarted") private var hasPresentedGettingStarted = false
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
-    @State private var selection: LocalizedSidebarItem? = .overview
 
     private var language: AppLanguage {
         AppLanguage(rawValue: languageRaw) ?? AppLanguage.defaultLanguage
@@ -55,7 +25,7 @@ struct LocalizedAppRootView: View {
             } else if model.executableURL == nil {
                 AsdfSetupView()
             } else {
-                navigation
+                navigationView
             }
         }
         .task {
@@ -68,20 +38,31 @@ struct LocalizedAppRootView: View {
         .onChange(of: model.plugins) { _, _ in presentGettingStartedIfNeeded() }
     }
 
-    private var navigation: some View {
-        NavigationSplitView {
-            List(LocalizedSidebarItem.allCases, selection: $selection) { item in
+    private var navigationView: some View {
+        let selection = Binding<AppSection?>(
+            get: { appNavigation.section },
+            set: { newValue in
+                if let newValue {
+                    appNavigation.section = newValue
+                }
+            }
+        )
+
+        return NavigationSplitView {
+            List(AppSection.allCases, selection: selection) { item in
                 Label {
                     Text(language.localized(item.titleKey))
                 } icon: {
                     Image(systemName: item.icon)
                 }
                 .tag(item)
+                .accessibilityLabel(language.localized(item.titleKey))
+                .accessibilityHint(shortcutHint(item))
             }
             .navigationTitle("asdf GUI")
             .navigationSplitViewColumnWidth(min: 170, ideal: 205, max: 240)
         } detail: {
-            switch selection ?? .overview {
+            switch appNavigation.section {
             case .overview: PolishedOverviewView()
             case .projects: ProjectsPolishedView()
             case .versions: VersionsPolishedView()
@@ -90,6 +71,13 @@ struct LocalizedAppRootView: View {
             }
         }
         .task { await model.refresh() }
+    }
+
+    private func shortcutHint(_ section: AppSection) -> String {
+        if language == .simplifiedChinese {
+            return "按 Command-\(section.shortcutNumber) 可快速切换到此页面。"
+        }
+        return "Press Command-\(section.shortcutNumber) to switch to this section."
     }
 
     private func presentGettingStartedIfNeeded() {
