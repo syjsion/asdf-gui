@@ -74,8 +74,9 @@ enum AppUpdateSecurity {
         if value.hasPrefix("sha256:") {
             value.removeFirst("sha256:".count)
         }
+        let hexadecimal = CharacterSet(charactersIn: "0123456789abcdef")
         guard value.count == 64,
-              value.allSatisfy({ $0.isHexDigit }) else { return nil }
+              value.unicodeScalars.allSatisfy({ hexadecimal.contains($0) }) else { return nil }
         return value
     }
 
@@ -198,19 +199,11 @@ struct AppUpdateInstaller {
         let scriptURL = prepared.workingDirectory.appendingPathComponent("install-update.sh", isDirectory: false)
         do {
             try Self.replacementHelperScript.write(to: scriptURL, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o700],
-                ofItemAtPath: scriptURL.path
-            )
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: scriptURL.path)
 
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = [
-                scriptURL.path,
-                String(currentProcessIdentifier),
-                prepared.stagedAppURL.path,
-                prepared.targetAppURL.path
-            ]
+            process.arguments = [scriptURL.path, String(currentProcessIdentifier), prepared.stagedAppURL.path, prepared.targetAppURL.path]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
             try process.run()
@@ -232,12 +225,7 @@ struct AppUpdateInstaller {
     }
 
     private func makeWorkingDirectory(version: String) throws -> URL {
-        let caches = try FileManager.default.url(
-            for: .cachesDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )
+        let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let root = caches
             .appendingPathComponent(expectedBundleIdentifier, isDirectory: true)
             .appendingPathComponent("Updates", isDirectory: true)
@@ -257,22 +245,14 @@ struct AppUpdateInstaller {
             arguments: ["attach", "-readonly", "-nobrowse", "-plist", dmgURL.path]
         )
         guard result.exitCode == 0 else {
-            throw AppUpdateInstallError.commandFailed(
-                command: "hdiutil attach",
-                status: result.exitCode,
-                message: result.stderr
-            )
+            throw AppUpdateInstallError.commandFailed(command: "hdiutil attach", status: result.exitCode, message: result.stderr)
         }
 
         let data = Data(result.stdout.utf8)
-        guard let root = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+        guard let root = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
               let entities = root["system-entities"] as? [[String: Any]],
               let mountPath = entities.compactMap({ $0["mount-point"] as? String }).last else {
-            throw AppUpdateInstallError.commandFailed(
-                command: "hdiutil attach",
-                status: result.exitCode,
-                message: "No mount point was returned."
-            )
+            throw AppUpdateInstallError.commandFailed(command: "hdiutil attach", status: result.exitCode, message: "No mount point was returned.")
         }
         return URL(fileURLWithPath: mountPath, isDirectory: true)
     }
@@ -282,11 +262,7 @@ struct AppUpdateInstaller {
         if FileManager.default.fileExists(atPath: expected.path) {
             return expected
         }
-        let contents = try FileManager.default.contentsOfDirectory(
-            at: mountPoint,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )
+        let contents = try FileManager.default.contentsOfDirectory(at: mountPoint, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
         guard let app = contents.first(where: { $0.pathExtension.lowercased() == "app" }) else {
             throw AppUpdateInstallError.mountedAppMissing
         }
@@ -294,8 +270,7 @@ struct AppUpdateInstaller {
     }
 
     private func validateMountedApp(_ appURL: URL, update: AvailableAppUpdate) throws {
-        guard let bundle = Bundle(url: appURL),
-              bundle.bundleIdentifier == expectedBundleIdentifier else {
+        guard let bundle = Bundle(url: appURL), bundle.bundleIdentifier == expectedBundleIdentifier else {
             throw AppUpdateInstallError.bundleIdentifierMismatch
         }
         let actualVersion = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -306,15 +281,8 @@ struct AppUpdateInstaller {
         }
     }
 
-    private func runRequired(
-        executable: String,
-        arguments: [String],
-        displayName: String
-    ) async throws {
-        let result = try await commandRunner.run(
-            executable: URL(fileURLWithPath: executable),
-            arguments: arguments
-        )
+    private func runRequired(executable: String, arguments: [String], displayName: String) async throws {
+        let result = try await commandRunner.run(executable: URL(fileURLWithPath: executable), arguments: arguments)
         guard result.exitCode == 0 else {
             throw AppUpdateInstallError.commandFailed(
                 command: displayName,
