@@ -71,6 +71,15 @@ struct AsdfGUIApp: App {
         }
         .defaultSize(width: 760, height: 610)
 
+        Window(language == .simplifiedChinese ? "Shell 自动补全" : "Shell Completions", id: "shell-completions") {
+            ShellCompletionView()
+                .environment(model)
+                .environment(navigation)
+                .environment(\.locale, language.locale)
+                .id(languageRaw)
+        }
+        .defaultSize(width: 780, height: 650)
+
         Window(language.localized("asdf Configuration"), id: "asdf-configuration") {
             AsdfConfigurationView()
                 .environment(model)
