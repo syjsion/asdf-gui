@@ -33,7 +33,7 @@ final class AppUpdateInstallerTests: XCTestCase {
 
         XCTAssertEqual(
             try AppUpdateSecurity.sha256Hex(ofFileAt: file),
-            "f831e67912baa866a5c9d942e71c7bd2797381376209829874cf6242c5237613"
+            "99fb15f03ce40b98d999b75c1697bcdcb38055ea2016b974cb3b1824e8f289eb"
         )
     }
 
