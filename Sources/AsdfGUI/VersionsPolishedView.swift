@@ -20,6 +20,7 @@ struct VersionsPolishedView: View {
     @State private var searchText = ""
     @State private var scope: VersionListScope = .all
     @State private var isShowingUpdateCenter = false
+    @State private var isShowingStorage = false
     @AppStorage(AppLanguage.storageKey) private var languageRaw = AppLanguage.defaultLanguage.rawValue
 
     private var language: AppLanguage {
@@ -39,6 +40,13 @@ struct VersionsPolishedView: View {
                 if model.isLoadingVersionBrowser {
                     ProgressView().controlSize(.small)
                 }
+
+                Button(language.localized("Runtime Storage"), systemImage: "internaldrive") {
+                    isShowingStorage = true
+                }
+                .disabled(selectedTool == nil || model.versionBrowserInstalledVersions.isEmpty || model.hasActiveOperation)
+                .accessibilityHint(Text(language.localized("Measure disk usage for installed versions of the selected plugin.")))
+
                 Button(language.localized("Update Center"), systemImage: "arrow.up.circle") {
                     isShowingUpdateCenter = true
                 }
@@ -115,6 +123,11 @@ struct VersionsPolishedView: View {
         }
         .sheet(isPresented: $isShowingUpdateCenter) {
             RuntimeUpdateCenterView()
+        }
+        .sheet(isPresented: $isShowingStorage) {
+            if let selectedTool {
+                RuntimeStorageView(tool: selectedTool)
+            }
         }
         .onAppear {
             applyVersionToolRequestIfNeeded()
