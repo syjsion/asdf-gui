@@ -67,7 +67,8 @@ struct LocalizedAppRootView: View {
             case .projects: ProjectsPolishedView()
             case .versions: VersionsPolishedView()
             case .resolution: ResolutionView()
-            case .plugins: PluginsView()
+            case .plugins: PluginsHubView()
+            case .tools: ToolsHubView()
             }
         }
         .task { await model.refresh() }
