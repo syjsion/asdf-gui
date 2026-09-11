@@ -220,8 +220,8 @@ struct ShellCompletionView: View {
     private func previewExplanation(_ plan: ShellCompletionPlan) -> String {
         if plan.shell == .bash {
             return t(
-                "asdf GUI manages only the marked block below in .bash_profile. It uses the selected asdf executable to generate Bash completions when a shell starts.",
-                "asdf GUI 只管理 .bash_profile 中下方带标记的配置块，并在 Shell 启动时使用当前选定的 asdf 可执行文件生成 Bash 补全。"
+                "asdf GUI manages only the marked block below in .bashrc. It uses the selected asdf executable to generate Bash completions when a shell starts. On macOS, make sure your Bash login profile sources .bashrc if your setup requires it.",
+                "asdf GUI 只管理 .bashrc 中下方带标记的配置块，并在 Shell 启动时使用当前选定的 asdf 可执行文件生成 Bash 补全。在 macOS 上，如果你的 Bash 登录配置需要显式加载 .bashrc，请确保已正确 source。"
             )
         }
         return t(
